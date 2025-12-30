@@ -231,9 +231,11 @@ class RealtimeAgent:
         
         # Session created/updated
         elif event_type == "session.created":
-            print(f"[{self.call_sid}] OpenAI session created")
+            session = data.get("session", {})
+            print(f"[{self.call_sid}] OpenAI session created - voice: {session.get('voice')}, modalities: {session.get('modalities')}")
         elif event_type == "session.updated":
-            print(f"[{self.call_sid}] OpenAI session updated")
+            session = data.get("session", {})
+            print(f"[{self.call_sid}] OpenAI session updated - voice: {session.get('voice')}, output_format: {session.get('output_audio_format')}")
         
         # Transcription of user speech
         elif event_type == "conversation.item.input_audio_transcription.completed":
@@ -259,11 +261,21 @@ class RealtimeAgent:
         
         # Response completed
         elif event_type == "response.done":
-            print(f"[{self.call_sid}] Response completed")
+            response_data = data.get("response", {})
+            status = response_data.get("status", "unknown")
+            output = response_data.get("output", [])
+            print(f"[{self.call_sid}] Response completed - status: {status}, outputs: {len(output)}")
+            if status != "completed":
+                print(f"[{self.call_sid}] Response issue: {response_data}")
         
         # Response started
         elif event_type == "response.created":
             print(f"[{self.call_sid}] Response started generating")
+        
+        # Transcription failed
+        elif event_type == "conversation.item.input_audio_transcription.failed":
+            error = data.get("error", {})
+            print(f"[{self.call_sid}] Transcription FAILED: {error}")
         
         # Error handling
         elif event_type == "error":

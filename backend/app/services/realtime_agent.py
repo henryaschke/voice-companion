@@ -21,7 +21,8 @@ from app.config import settings
 
 
 # OpenAI Realtime API endpoint
-OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17"
+# Try different model names if one doesn't work
+OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview"
 
 # System prompt for the voice companion (German)
 SYSTEM_PROMPT_DE = """Du bist ein freundlicher digitaler Begleiter für ältere Menschen in Deutschland.

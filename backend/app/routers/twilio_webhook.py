@@ -68,6 +68,8 @@ async def voice_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     ws_url = settings.BASE_URL.replace("http://", "wss://").replace("https://", "wss://")
     stream_url = f"{ws_url}/twilio/stream?call_sid={call_sid}"
     
+    print(f"[{call_sid}] TwiML WebSocket URL: {stream_url}")
+    
     # Start bidirectional stream
     # Note: Twilio Media Streams support bidirectional audio in/out
     connect.stream(
@@ -84,7 +86,7 @@ async def voice_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 @router.websocket("/stream")
-async def media_stream_handler(websocket: WebSocket, call_sid: str):
+async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
     """
     WebSocket handler for Twilio Media Streams.
     
@@ -96,7 +98,15 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str):
     - Forwards audio to OpenAI for transcription and response generation
     - Streams back audio responses with minimal latency
     """
-    await websocket.accept()
+    print(f"[WS] Connection attempt from Twilio, call_sid={call_sid}")
+    print(f"[WS] Headers: {websocket.headers}")
+    
+    try:
+        await websocket.accept()
+        print(f"[WS] Connection accepted for call_sid={call_sid}")
+    except Exception as e:
+        print(f"[WS] Failed to accept connection: {e}")
+        raise
     
     agent: Optional[RealtimeAgent] = None
     stream_sid: Optional[str] = None

@@ -163,6 +163,8 @@ class RealtimeAgent:
     
     async def send_initial_greeting(self):
         """Send initial greeting to start the conversation."""
+        print(f"[{self.call_sid}] Sending initial greeting to OpenAI...")
+        
         greeting = {
             "type": "conversation.item.create",
             "item": {
@@ -178,9 +180,11 @@ class RealtimeAgent:
         }
         
         await self.ws.send(json.dumps(greeting))
+        print(f"[{self.call_sid}] Greeting sent, requesting response...")
         
         # Request response
         await self.ws.send(json.dumps({"type": "response.create"}))
+        print(f"[{self.call_sid}] Response requested")
     
     async def send_audio(self, audio_base64: str):
         """Send audio chunk to OpenAI."""
@@ -214,11 +218,22 @@ class RealtimeAgent:
         """Handle incoming messages from OpenAI Realtime API."""
         event_type = data.get("type", "")
         
+        # Log all events for debugging
+        if event_type not in ["response.audio.delta", "input_audio_buffer.speech_started", "input_audio_buffer.speech_stopped"]:
+            print(f"[{self.call_sid}] OpenAI event: {event_type}")
+        
         # Audio output - send back to Twilio
         if event_type == "response.audio.delta":
             audio_delta = data.get("delta", "")
             if audio_delta:
                 await self.audio_queue.put(audio_delta)
+                print(f"[{self.call_sid}] Audio chunk received from OpenAI ({len(audio_delta)} bytes)")
+        
+        # Session created/updated
+        elif event_type == "session.created":
+            print(f"[{self.call_sid}] OpenAI session created")
+        elif event_type == "session.updated":
+            print(f"[{self.call_sid}] OpenAI session updated")
         
         # Transcription of user speech
         elif event_type == "conversation.item.input_audio_transcription.completed":
@@ -244,12 +259,16 @@ class RealtimeAgent:
         
         # Response completed
         elif event_type == "response.done":
-            pass  # Response complete
+            print(f"[{self.call_sid}] Response completed")
+        
+        # Response started
+        elif event_type == "response.created":
+            print(f"[{self.call_sid}] Response started generating")
         
         # Error handling
         elif event_type == "error":
             error = data.get("error", {})
-            print(f"[{self.call_sid}] OpenAI error: {error}")
+            print(f"[{self.call_sid}] OpenAI ERROR: {error}")
     
     async def receive_audio(self) -> AsyncGenerator[str, None]:
         """Async generator that yields audio chunks to send to Twilio."""

@@ -1,0 +1,34 @@
+# Rename this file to .gitignore
+
+# Environment files
+.env
+*.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Database
+*.db
+data/
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Keys
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
+

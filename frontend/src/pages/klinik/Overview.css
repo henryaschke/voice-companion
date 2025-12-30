@@ -1,0 +1,70 @@
+.klinik-overview {
+  max-width: 1200px;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  color: var(--color-text-muted);
+}
+
+.stats-grid .stat-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+}
+
+.stat-icon.clinical {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-lg);
+}
+
+.overview-grid > :first-child {
+  grid-column: span 2;
+}
+
+@media (max-width: 900px) {
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .overview-grid > :first-child {
+    grid-column: span 1;
+  }
+}
+
+.dummy-chart {
+  min-height: 300px;
+}
+
+.placeholder-chart {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chart-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  color: var(--color-text-muted);
+  padding: var(--space-xl);
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-lg);
+  border: 2px dashed var(--color-border);
+  width: 100%;
+}
+
+.chart-placeholder p {
+  font-weight: 500;
+}
+

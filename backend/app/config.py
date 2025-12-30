@@ -1,0 +1,67 @@
+"""Application configuration with GDPR-aware defaults."""
+import os
+from pydantic_settings import BaseSettings
+from typing import Optional
+from cryptography.fernet import Fernet
+
+
+class Settings(BaseSettings):
+    # Database
+    DATABASE_URL: str = "sqlite+aiosqlite:///./data/voicecompanion.db"
+    
+    # OpenAI
+    OPENAI_API_KEY: str = ""
+    
+    # Twilio
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_NUMBER_E164: str = ""
+    # Twilio EU Region (IE1 for Ireland) - set in Twilio console
+    TWILIO_REGION: str = "ie1"
+    
+    # Security
+    ADMIN_TOKEN: str = "dev-admin-token"
+    FERNET_KEY: Optional[str] = None  # For transcript encryption at rest
+    
+    # Application
+    BASE_URL: str = "http://localhost:8000"
+    
+    # GDPR Settings
+    DEFAULT_RETENTION_DAYS: int = 30
+    ENABLE_TRANSCRIPT_STORAGE: bool = True
+    EU_HOSTING_ONLY: bool = True  # Document-only flag; deploy to EU servers
+    NO_TRAINING_USE: bool = True  # Do not use data for third-party training
+    
+    class Config:
+        env_file = ".env"
+        extra = "ignore"
+
+
+settings = Settings()
+
+
+def get_fernet() -> Optional[Fernet]:
+    """Get Fernet instance for encryption, or None if not configured."""
+    if settings.FERNET_KEY:
+        return Fernet(settings.FERNET_KEY.encode())
+    return None
+
+
+def encrypt_text(text: str) -> str:
+    """Encrypt text if FERNET_KEY is set, otherwise return as-is."""
+    fernet = get_fernet()
+    if fernet and text:
+        return fernet.encrypt(text.encode()).decode()
+    return text
+
+
+def decrypt_text(text: str) -> str:
+    """Decrypt text if FERNET_KEY is set, otherwise return as-is."""
+    fernet = get_fernet()
+    if fernet and text:
+        try:
+            return fernet.decrypt(text.encode()).decode()
+        except Exception:
+            return text  # Return as-is if decryption fails
+    return text
+

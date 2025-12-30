@@ -1,0 +1,32 @@
+# FastAPI + Server
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+python-multipart==0.0.9
+websockets==12.0
+
+# Database
+sqlalchemy==2.0.25
+aiosqlite==0.19.0
+
+# Twilio
+twilio==8.13.0
+
+# OpenAI
+openai==1.12.0
+
+# Security / Encryption
+cryptography==42.0.2
+
+# Background Tasks
+celery==5.3.6
+redis==5.0.1
+
+# Utilities
+python-dotenv==1.0.1
+httpx==0.26.0
+pydantic==2.6.1
+pydantic-settings==2.1.0
+
+# Audio processing
+audioop-lts==0.2.1
+

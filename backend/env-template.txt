@@ -1,0 +1,9 @@
+# Copy this to .env and fill in your values
+OPENAI_API_KEY=your-openai-key
+TWILIO_ACCOUNT_SID=your-account-sid
+TWILIO_AUTH_TOKEN=your-auth-token
+TWILIO_NUMBER_E164=+1234567890
+ADMIN_TOKEN=your-admin-token
+FERNET_KEY=
+BASE_URL=https://your-domain.com
+

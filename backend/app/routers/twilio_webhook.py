@@ -141,9 +141,11 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
         
         # Start task to forward OpenAI audio back to Twilio
         async def forward_agent_audio():
+            """Forward audio from OpenAI to Twilio with proper buffering."""
+            chunk_count = 0
             try:
                 async for audio_chunk in agent.receive_audio():
-                    if stream_sid:
+                    if stream_sid and audio_chunk:
                         # Send audio back to Twilio
                         media_message = {
                             "event": "media",
@@ -153,8 +155,31 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
                             }
                         }
                         await websocket.send_text(json.dumps(media_message))
+                        chunk_count += 1
+                        
+                        # Small yield to prevent blocking and ensure smooth streaming
+                        if chunk_count % 10 == 0:
+                            await asyncio.sleep(0.001)
+                            
+            except asyncio.CancelledError:
+                print(f"[{call_sid}] Forwarding task cancelled, draining remaining audio...")
+                # Drain remaining audio before exiting
+                try:
+                    async for audio_chunk in agent.drain_audio_queue():
+                        if stream_sid and audio_chunk:
+                            media_message = {
+                                "event": "media",
+                                "streamSid": stream_sid,
+                                "media": {
+                                    "payload": audio_chunk
+                                }
+                            }
+                            await websocket.send_text(json.dumps(media_message))
+                except Exception as drain_error:
+                    print(f"[{call_sid}] Error draining audio: {drain_error}")
+                raise  # Re-raise CancelledError
             except Exception as e:
-                print(f"Error forwarding agent audio: {e}")
+                print(f"[{call_sid}] Error forwarding agent audio: {e}")
         
         # Start forwarding task
         forward_task = asyncio.create_task(forward_agent_audio())
@@ -188,17 +213,26 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
                             transcript_parts.append(transcript)
                 
                 elif event_type == "stop":
-                    print(f"[{call_sid}] Stream stopped")
+                    print(f"[{call_sid}] Stream stop received, draining audio...")
+                    # Give time for any remaining audio to be sent
+                    await asyncio.sleep(0.5)
                     break
                     
             except WebSocketDisconnect:
+                print(f"[{call_sid}] WebSocket disconnected")
                 break
             except Exception as e:
                 print(f"[{call_sid}] Error processing message: {e}")
                 break
         
-        # Cancel forwarding task
+        # Cancel forwarding task - it will drain remaining audio
+        print(f"[{call_sid}] Cancelling forward task...")
         forward_task.cancel()
+        try:
+            await forward_task
+        except asyncio.CancelledError:
+            pass
+        print(f"[{call_sid}] Forward task completed")
         
     except Exception as e:
         print(f"[{call_sid}] Stream error: {e}")

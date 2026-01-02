@@ -313,12 +313,12 @@ class RealtimeAgent:
                 },
                 "turn_detection": {
                     "type": "server_vad",
-                    "threshold": 0.5,
-                    "prefix_padding_ms": 300,
-                    "silence_duration_ms": 600  # Slightly longer pause for elderly speakers
+                    "threshold": 0.6,            # Slightly higher threshold to avoid false triggers
+                    "prefix_padding_ms": 400,    # More audio before speech detection
+                    "silence_duration_ms": 800   # Longer pause for elderly speakers
                 },
                 "temperature": 0.6,  # Slightly lower for more consistent, calm responses
-                "max_response_output_tokens": 100  # Keep responses short and natural
+                "max_response_output_tokens": 150  # Allow slightly longer responses to avoid cutoff
             }
         }
         
@@ -453,15 +453,32 @@ class RealtimeAgent:
         """Async generator that yields audio chunks to send to Twilio."""
         while self.connected:
             try:
+                # Longer timeout to avoid dropping chunks during network jitter
                 audio = await asyncio.wait_for(
                     self.audio_queue.get(),
-                    timeout=0.1
+                    timeout=0.5
                 )
                 yield audio
             except asyncio.TimeoutError:
                 continue
             except Exception:
                 break
+    
+    async def drain_audio_queue(self) -> AsyncGenerator[str, None]:
+        """Drain any remaining audio from the queue before disconnect."""
+        # Give OpenAI a moment to finish sending any remaining audio
+        await asyncio.sleep(0.3)
+        
+        # Drain remaining audio chunks
+        while not self.audio_queue.empty():
+            try:
+                audio = self.audio_queue.get_nowait()
+                yield audio
+            except asyncio.QueueEmpty:
+                break
+        
+        # Final small delay to ensure last chunk is processed
+        await asyncio.sleep(0.1)
     
     def get_latest_transcript(self) -> str:
         """Get the latest transcript segment."""

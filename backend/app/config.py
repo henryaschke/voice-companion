@@ -9,15 +9,25 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./data/voicecompanion.db"
     
-    # OpenAI
+    # OpenAI (GPT-4o for reasoning)
     OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o"  # Best streaming model available
+    
+    # Deepgram (Streaming STT)
+    DEEPGRAM_API_KEY: str = ""
+    DEEPGRAM_MODEL: str = "nova-2"  # Best accuracy + speed
+    DEEPGRAM_LANGUAGE: str = "de"   # German
+    
+    # ElevenLabs (Streaming TTS)
+    ELEVENLABS_API_KEY: str = ""
+    ELEVENLABS_VOICE_ID: str = "oae6GCCzwoEbfc5FHdEu"  # Default German voice
+    ELEVENLABS_MODEL: str = "eleven_turbo_v2_5"  # Lowest latency model
     
     # Twilio
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_NUMBER_E164: str = ""
-    # Twilio EU Region (IE1 for Ireland) - set in Twilio console
-    TWILIO_REGION: str = "ie1"
+    TWILIO_REGION: str = "ie1"  # EU Region Ireland
     
     # Security
     ADMIN_TOKEN: str = "dev-admin-token"
@@ -26,11 +36,18 @@ class Settings(BaseSettings):
     # Application
     BASE_URL: str = "http://localhost:8000"
     
+    # Voice Agent Tuning Parameters
+    END_OF_TURN_SILENCE_MS: int = 750   # Silence before considering turn complete
+    GRACE_MS: int = 200                  # Extra grace period after silence
+    MIN_UTTERANCE_MS: int = 600          # Minimum utterance length
+    MAX_UTTERANCE_MS: int = 15000        # Maximum utterance length
+    BARGE_IN_THRESHOLD_MS: int = 150     # How fast to detect barge-in
+    
     # GDPR Settings
     DEFAULT_RETENTION_DAYS: int = 30
     ENABLE_TRANSCRIPT_STORAGE: bool = True
-    EU_HOSTING_ONLY: bool = True  # Document-only flag; deploy to EU servers
-    NO_TRAINING_USE: bool = True  # Do not use data for third-party training
+    EU_HOSTING_ONLY: bool = True
+    NO_TRAINING_USE: bool = True
     
     class Config:
         env_file = ".env"

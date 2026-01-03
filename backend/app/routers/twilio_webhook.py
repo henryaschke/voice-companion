@@ -1,10 +1,17 @@
-"""Twilio Voice webhook and Media Streams handler."""
+"""
+Twilio Voice webhook and Media Streams handler.
+
+Endpoints:
+- POST /twilio/voice - Returns TwiML to start bidirectional stream
+- WS /twilio/stream - WebSocket for bidirectional audio
+- POST /twilio/status - Call status callbacks
+- POST /twilio/outbound/call - Initiate outbound call
+"""
 import json
-import base64
 import asyncio
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Depends, BackgroundTasks
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Depends
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from twilio.twiml.voice_response import VoiceResponse, Connect
@@ -13,7 +20,7 @@ from app.database import get_db, async_session_maker
 from app.config import settings
 from app import crud
 from app.schemas import CallCreate, CallUpdate
-from app.services.realtime_agent import RealtimeAgent
+from app.services.realtime_gateway import RealtimeGateway
 from app.services.post_call_processor import process_call_completion
 
 router = APIRouter(prefix="/twilio", tags=["twilio"])
@@ -35,6 +42,8 @@ async def voice_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     call_sid = form_data.get("CallSid", "")
     from_number = form_data.get("From", "")
     to_number = form_data.get("To", "")
+    
+    print(f"[{call_sid}] Incoming call from {from_number}")
     
     # Look up caller by phone number
     person = await crud.get_person_by_phone(db, from_number)
@@ -71,7 +80,6 @@ async def voice_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     print(f"[{call_sid}] TwiML WebSocket URL: {stream_url}")
     
     # Start bidirectional stream
-    # Note: Twilio Media Streams support bidirectional audio in/out
     connect.stream(
         url=stream_url,
         name="voice-companion-stream"
@@ -90,27 +98,30 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
     """
     WebSocket handler for Twilio Media Streams.
     
-    Bidirectional streaming:
-    - Receives audio from Twilio (caller's voice)
-    - Sends audio back to Twilio (agent's voice)
+    Architecture:
+    - Receives μ-law audio from Twilio
+    - Sends to Deepgram STT (streaming)
+    - Processes with GPT-4o (streaming)
+    - Synthesizes with ElevenLabs TTS (streaming)
+    - Sends audio back to Twilio
     
-    Integration with OpenAI Realtime API:
-    - Forwards audio to OpenAI for transcription and response generation
-    - Streams back audio responses with minimal latency
+    State Machine:
+    - LISTENING: Receiving user speech, streaming to STT
+    - THINKING: Processing with LLM
+    - SPEAKING: Streaming TTS audio
+    - Barge-in: User interrupts → cancel and return to LISTENING
     """
-    print(f"[WS] Connection attempt from Twilio, call_sid={call_sid}")
-    print(f"[WS] Headers: {websocket.headers}")
+    print(f"[{call_sid}] WebSocket connection attempt")
     
     try:
         await websocket.accept()
-        print(f"[WS] Connection accepted for call_sid={call_sid}")
+        print(f"[{call_sid}] WebSocket accepted")
     except Exception as e:
-        print(f"[WS] Failed to accept connection: {e}")
+        print(f"[{call_sid}] Failed to accept WebSocket: {e}")
         raise
     
-    agent: Optional[RealtimeAgent] = None
+    gateway: Optional[RealtimeGateway] = None
     stream_sid: Optional[str] = None
-    transcript_parts = []
     
     try:
         # Get call and person info
@@ -125,64 +136,34 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
                 if memory:
                     memory_context = memory.memory_json
             
-            # Check consent for recording
-            consent_recording = person.consent_recording if person else False
             person_name = person.display_name if person else "Anrufer"
         
-        # Initialize realtime agent
-        agent = RealtimeAgent(
+        # Callback to send audio to Twilio
+        async def send_audio_to_twilio(b64_ulaw: str):
+            """Send audio chunk to Twilio."""
+            if stream_sid and b64_ulaw:
+                media_message = {
+                    "event": "media",
+                    "streamSid": stream_sid,
+                    "media": {
+                        "payload": b64_ulaw
+                    }
+                }
+                try:
+                    await websocket.send_text(json.dumps(media_message))
+                except Exception as e:
+                    print(f"[{call_sid}] Error sending audio: {e}")
+        
+        # Initialize gateway
+        gateway = RealtimeGateway(
             call_sid=call_sid,
             person_name=person_name,
-            memory_context=memory_context
+            memory_context=memory_context,
+            on_audio_out=send_audio_to_twilio
         )
         
-        # Connect to OpenAI Realtime API
-        await agent.connect()
-        
-        # Start task to forward OpenAI audio back to Twilio
-        async def forward_agent_audio():
-            """Forward audio from OpenAI to Twilio with proper buffering."""
-            chunk_count = 0
-            try:
-                async for audio_chunk in agent.receive_audio():
-                    if stream_sid and audio_chunk:
-                        # Send audio back to Twilio
-                        media_message = {
-                            "event": "media",
-                            "streamSid": stream_sid,
-                            "media": {
-                                "payload": audio_chunk  # Base64 encoded audio
-                            }
-                        }
-                        await websocket.send_text(json.dumps(media_message))
-                        chunk_count += 1
-                        
-                        # Small yield to prevent blocking and ensure smooth streaming
-                        if chunk_count % 10 == 0:
-                            await asyncio.sleep(0.001)
-                            
-            except asyncio.CancelledError:
-                print(f"[{call_sid}] Forwarding task cancelled, draining remaining audio...")
-                # Drain remaining audio before exiting
-                try:
-                    async for audio_chunk in agent.drain_audio_queue():
-                        if stream_sid and audio_chunk:
-                            media_message = {
-                                "event": "media",
-                                "streamSid": stream_sid,
-                                "media": {
-                                    "payload": audio_chunk
-                                }
-                            }
-                            await websocket.send_text(json.dumps(media_message))
-                except Exception as drain_error:
-                    print(f"[{call_sid}] Error draining audio: {drain_error}")
-                raise  # Re-raise CancelledError
-            except Exception as e:
-                print(f"[{call_sid}] Error forwarding agent audio: {e}")
-        
-        # Start forwarding task
-        forward_task = asyncio.create_task(forward_agent_audio())
+        # Start gateway (connects to Deepgram, initializes LLM and TTS)
+        await gateway.start()
         
         # Handle incoming Twilio messages
         while True:
@@ -196,26 +177,21 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
                 
                 elif event_type == "start":
                     stream_sid = data.get("streamSid")
+                    start_info = data.get("start", {})
                     print(f"[{call_sid}] Stream started: {stream_sid}")
+                    print(f"[{call_sid}] Media format: {start_info.get('mediaFormat', {})}")
                     
-                    # Send initial greeting via agent
-                    await agent.send_initial_greeting()
+                    # Send initial greeting
+                    await gateway.send_initial_greeting()
                 
                 elif event_type == "media":
-                    # Forward audio to OpenAI
+                    # Forward audio to gateway
                     payload = data.get("media", {}).get("payload", "")
-                    if payload and agent:
-                        await agent.send_audio(payload)
-                        
-                        # Collect transcription
-                        transcript = agent.get_latest_transcript()
-                        if transcript:
-                            transcript_parts.append(transcript)
+                    if payload:
+                        await gateway.receive_audio(payload)
                 
                 elif event_type == "stop":
-                    print(f"[{call_sid}] Stream stop received, draining audio...")
-                    # Give time for any remaining audio to be sent
-                    await asyncio.sleep(0.5)
+                    print(f"[{call_sid}] Stream stop received")
                     break
                     
             except WebSocketDisconnect:
@@ -225,30 +201,24 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
                 print(f"[{call_sid}] Error processing message: {e}")
                 break
         
-        # Cancel forwarding task - it will drain remaining audio
-        print(f"[{call_sid}] Cancelling forward task...")
-        forward_task.cancel()
-        try:
-            await forward_task
-        except asyncio.CancelledError:
-            pass
-        print(f"[{call_sid}] Forward task completed")
-        
     except Exception as e:
         print(f"[{call_sid}] Stream error: {e}")
     
     finally:
         # Cleanup
-        if agent:
-            full_transcript = agent.get_full_transcript()
-            await agent.disconnect()
-        else:
-            full_transcript = " ".join(transcript_parts)
+        full_transcript = ""
+        
+        if gateway:
+            full_transcript = gateway.get_full_transcript()
+            await gateway.stop()
         
         # Process call completion in background
-        asyncio.create_task(
-            process_call_completion(call_sid, full_transcript)
-        )
+        if full_transcript:
+            asyncio.create_task(
+                process_call_completion(call_sid, full_transcript)
+            )
+        
+        print(f"[{call_sid}] WebSocket handler complete")
 
 
 @router.post("/status")
@@ -262,6 +232,8 @@ async def status_callback(request: Request):
     call_sid = form_data.get("CallSid", "")
     call_status = form_data.get("CallStatus", "")
     duration = form_data.get("CallDuration")
+    
+    print(f"[{call_sid}] Status callback: {call_status}")
     
     async with async_session_maker() as db:
         call = await crud.get_call_by_sid(db, call_sid)
@@ -329,4 +301,3 @@ async def initiate_outbound_call(
         
     except Exception as e:
         return {"error": str(e)}
-

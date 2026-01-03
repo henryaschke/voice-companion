@@ -45,9 +45,59 @@ EU Voice Companion ist eine Telefonplattform, die es ermöglicht:
 | Backend | Python 3.11, FastAPI, SQLAlchemy |
 | Frontend | React 18, Vite, JavaScript |
 | Datenbank | SQLite (MVP), PostgreSQL-ready |
-| Telefonie | Twilio Voice + Media Streams |
-| KI-Sprache | OpenAI Realtime API |
+| Telefonie | Twilio Voice + Media Streams (bidirektional) |
+| STT | Deepgram Nova-2 (Streaming) |
+| LLM | OpenAI GPT-4o (Streaming) |
+| TTS | ElevenLabs Turbo v2.5 (Streaming) |
 | KI-Analyse | OpenAI GPT-4o-mini |
+
+---
+
+## MVP Design Decisions
+
+Diese Entscheidungen wurden als Tech Lead getroffen, um optimale Latenz und Gesprächsqualität zu erreichen:
+
+### Architektur-Entscheidungen
+
+| Entscheidung | Begründung |
+|--------------|------------|
+| **Deepgram für STT** | Industrie-Leader für Streaming STT, ~100ms Latenz, exzellente Deutsch-Unterstützung |
+| **ElevenLabs für TTS** | Beste Sprachqualität am Markt, natürliche deutsche Stimmen |
+| **GPT-4o für Reasoning** | Bestes verfügbares Streaming-Model für Konversation |
+| **Kein OpenAI Realtime API** | Separates STT/LLM/TTS ermöglicht bessere Kontrolle über Turn-Taking und Barge-In |
+| **webrtcvad nicht verwendet** | Deepgram hat eingebaute VAD/Endpointing, reduziert Komplexität |
+
+### State Machine
+
+```
+LISTENING → THINKING → SPEAKING → LISTENING
+     ↑                      │
+     └──── BARGE-IN ────────┘
+```
+
+- **LISTENING**: Audio → Deepgram STT (kontinuierlich)
+- **THINKING**: Transcript → GPT-4o (streaming)
+- **SPEAKING**: Sätze → ElevenLabs TTS → Twilio
+- **BARGE-IN**: User spricht während Agent spricht → Cancel alles, zurück zu LISTENING
+
+### Latenz-Ziele
+
+| Metrik | Ziel | Komponente |
+|--------|------|------------|
+| STT Latency | <200ms | Deepgram |
+| LLM TTFB | <500ms | GPT-4o |
+| TTS TTFB | <300ms | ElevenLabs |
+| **Total Turn Latency** | **<1.5s** | End-to-End |
+
+### Audio-Pipeline
+
+```
+Twilio μ-law 8kHz → PCM 8kHz → Deepgram
+                                   ↓
+                              GPT-4o (text)
+                                   ↓
+ElevenLabs PCM 24kHz → Downsample 8kHz → μ-law → Twilio
+```
 | Reverse Proxy | Caddy (automatisches HTTPS) |
 | Container | Docker + Docker Compose |
 

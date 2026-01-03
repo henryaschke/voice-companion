@@ -11,21 +11,20 @@ aiosqlite==0.19.0
 # Twilio
 twilio==8.13.0
 
-# OpenAI
+# OpenAI (GPT-4o for reasoning)
 openai==1.12.0
+
+# Deepgram (Streaming STT)
+# Using websockets directly, no SDK needed
+
+# ElevenLabs (Streaming TTS)
+aiohttp==3.9.3
 
 # Security / Encryption
 cryptography==42.0.2
-
-# Background Tasks
-celery==5.3.6
-redis==5.0.1
 
 # Utilities
 python-dotenv==1.0.1
 httpx==0.26.0
 pydantic==2.6.1
 pydantic-settings==2.1.0
-
-# Audio processing handled by Python stdlib
-

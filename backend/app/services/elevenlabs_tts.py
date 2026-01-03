@@ -94,7 +94,6 @@ class ElevenLabsTTS:
         headers = {
             "xi-api-key": settings.ELEVENLABS_API_KEY,
             "Content-Type": "application/json",
-            "Accept": "audio/mpeg"  # MP3 is more reliable for streaming
         }
         
         payload = {
@@ -103,15 +102,13 @@ class ElevenLabsTTS:
             "voice_settings": {
                 "stability": 0.5,
                 "similarity_boost": 0.75,
-                "style": 0.0,
-                "use_speaker_boost": True
             }
         }
         
-        # Query params for streaming
+        # Use ulaw_8000 directly - exactly what Twilio needs, no conversion required!
         params = {
-            "output_format": "pcm_24000",  # PCM at 24kHz
-            "optimize_streaming_latency": "3"  # Maximum optimization
+            "output_format": "ulaw_8000",
+            "optimize_streaming_latency": "4"  # Maximum optimization
         }
         
         all_audio = b""
@@ -125,22 +122,18 @@ class ElevenLabsTTS:
                     print(f"[{self.call_sid}] ElevenLabs error {response.status}: {error_text}")
                     return b""
                 
-                # Stream audio chunks
-                async for chunk in response.content.iter_chunked(4800):  # ~100ms of 24kHz audio
+                # Stream audio chunks - already in μ-law 8kHz format!
+                async for chunk in response.content.iter_chunked(800):  # ~100ms of 8kHz μ-law
                     if self._cancelled:
                         print(f"[{self.call_sid}] TTS cancelled")
                         break
                     
                     if chunk:
-                        # Downsample from 24kHz to 8kHz
-                        # First downsample 24k -> 8k (take every 3rd sample)
-                        pcm_8k = self._downsample_24k_to_8k(chunk)
-                        
-                        all_audio += pcm_8k
+                        all_audio += chunk
                         self.total_chunks += 1
                         
                         if on_audio:
-                            await on_audio(pcm_8k)
+                            await on_audio(chunk)
             
             print(f"[{self.call_sid}] TTS complete: {len(text)} chars -> {len(all_audio)} bytes")
             return all_audio
@@ -181,7 +174,9 @@ class ElevenLabsTTS:
         on_audio: Optional[Callable[[str], Awaitable[None]]] = None
     ) -> str:
         """
-        Synthesize text and convert to base64 μ-law for Twilio.
+        Synthesize text to base64 μ-law for Twilio.
+        
+        ElevenLabs now outputs μ-law 8kHz directly, so we just base64 encode.
         
         Args:
             text: Text to synthesize
@@ -190,19 +185,20 @@ class ElevenLabsTTS:
         Returns:
             Complete audio as base64 μ-law
         """
-        from app.services.audio_utils import pcm_to_base64_ulaw
+        import base64
         
-        all_ulaw = ""
+        all_ulaw_b64 = ""
         
-        async def on_pcm(pcm_chunk: bytes):
-            nonlocal all_ulaw
-            ulaw_b64 = pcm_to_base64_ulaw(pcm_chunk)
-            all_ulaw += ulaw_b64
+        async def on_ulaw_chunk(ulaw_chunk: bytes):
+            nonlocal all_ulaw_b64
+            # Already μ-law, just base64 encode for Twilio
+            ulaw_b64 = base64.b64encode(ulaw_chunk).decode('ascii')
+            all_ulaw_b64 += ulaw_b64
             if on_audio:
                 await on_audio(ulaw_b64)
         
-        await self.synthesize_streaming(text, on_pcm)
-        return all_ulaw
+        await self.synthesize_streaming(text, on_ulaw_chunk)
+        return all_ulaw_b64
     
     def cancel(self):
         """Cancel current synthesis."""

@@ -84,22 +84,23 @@ class DeepgramSTT:
             print(f"[{self.call_sid}] Deepgram API key not configured")
             return False
         
-        # Build URL with query parameters
+        # Build URL with query parameters (Deepgram Nova-2 API)
         params = {
-            "model": settings.DEEPGRAM_MODEL,
-            "language": settings.DEEPGRAM_LANGUAGE,
+            "model": "nova-2",
+            "language": "de",
             "encoding": "linear16",
             "sample_rate": "8000",
             "channels": "1",
             "punctuate": "true",
             "interim_results": "true",
-            "utterance_end_ms": str(settings.END_OF_TURN_SILENCE_MS),
-            "vad_events": "true",
+            "endpointing": str(settings.END_OF_TURN_SILENCE_MS),  # End-of-speech detection
             "smart_format": "true",
         }
         
         query_string = "&".join(f"{k}={v}" for k, v in params.items())
         url = f"{self.DEEPGRAM_WS_URL}?{query_string}"
+        
+        print(f"[{self.call_sid}] Connecting to Deepgram: {url}")
         
         headers = {
             "Authorization": f"Token {settings.DEEPGRAM_API_KEY}"

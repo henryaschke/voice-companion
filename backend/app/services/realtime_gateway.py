@@ -211,9 +211,12 @@ class RealtimeGateway:
                 # For partials, we just track that speech is happening
                 self.metrics.stt_partial_count += 1
         
-        # Check for end of turn (speech_final from Deepgram)
-        if event.speech_final and self._current_utterance:
-            print(f"[{self.call_sid}] End of turn detected: '{self._current_utterance}'")
+        # Check for end of turn (speech_final from Deepgram or UtteranceEnd)
+        if event.speech_final:
+            print(f"[{self.call_sid}] speech_final received, utterance='{self._current_utterance[:50] if self._current_utterance else '(empty)'}...'")
+            
+            if self._current_utterance:
+                print(f"[{self.call_sid}] End of turn detected: '{self._current_utterance}'")
             self.metrics.end_user_speech()
             self.metrics.stt_final()
             

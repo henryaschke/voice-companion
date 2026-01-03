@@ -85,6 +85,8 @@ class DeepgramSTT:
             return False
         
         # Build URL with query parameters (Deepgram Nova-2 API)
+        # CRITICAL: utterance_end_ms MUST be set to receive UtteranceEnd events
+        # vad_events=true enables SpeechStarted events
         params = {
             "model": "nova-2",
             "language": "de",
@@ -93,7 +95,9 @@ class DeepgramSTT:
             "channels": "1",
             "punctuate": "true",
             "interim_results": "true",
-            "endpointing": str(settings.END_OF_TURN_SILENCE_MS),  # End-of-speech detection
+            "endpointing": str(settings.END_OF_TURN_SILENCE_MS),  # End-of-speech detection (750ms)
+            "utterance_end_ms": str(settings.END_OF_TURN_SILENCE_MS),  # Triggers UtteranceEnd event
+            "vad_events": "true",  # Enable SpeechStarted events
             "smart_format": "true",
         }
         
@@ -169,40 +173,51 @@ class DeepgramSTT:
         msg_type = data.get("type", "")
         
         if msg_type == "Results":
+            # Get top-level flags FIRST (before checking text)
+            is_final = data.get("is_final", False)
+            speech_final = data.get("speech_final", False)
+            
+            # Log speech_final for debugging turn detection
+            if speech_final:
+                print(f"[{self.call_sid}] Deepgram speech_final=True received!")
+            
             # Transcript result
             channel = data.get("channel", {})
             alternatives = channel.get("alternatives", [])
+            
+            text = ""
+            confidence = 0.0
             
             if alternatives:
                 alt = alternatives[0]
                 text = alt.get("transcript", "").strip()
                 confidence = alt.get("confidence", 0.0)
+            
+            # Get timing info
+            start_time = data.get("start", 0.0)
+            duration = data.get("duration", 0.0)
+            
+            # ALWAYS create event if we have text OR speech_final
+            # This ensures turn ends even if last chunk has no new text
+            if text or speech_final:
+                event = TranscriptEvent(
+                    text=text,
+                    is_final=is_final,
+                    confidence=confidence,
+                    start_time=start_time,
+                    end_time=start_time + duration,
+                    speech_final=speech_final
+                )
                 
                 if text:
-                    is_final = data.get("is_final", False)
-                    speech_final = data.get("speech_final", False)
-                    
-                    # Get timing info
-                    start_time = data.get("start", 0.0)
-                    duration = data.get("duration", 0.0)
-                    
-                    event = TranscriptEvent(
-                        text=text,
-                        is_final=is_final,
-                        confidence=confidence,
-                        start_time=start_time,
-                        end_time=start_time + duration,
-                        speech_final=speech_final
-                    )
-                    
                     if is_final:
                         self.final_count += 1
                         print(f"[{self.call_sid}] STT Final: {text}")
                     else:
                         self.partial_count += 1
-                    
-                    if self.on_transcript:
-                        await self.on_transcript(event)
+                
+                if self.on_transcript:
+                    await self.on_transcript(event)
         
         elif msg_type == "UtteranceEnd":
             # End of utterance detected

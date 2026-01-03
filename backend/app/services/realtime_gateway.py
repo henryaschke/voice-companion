@@ -148,6 +148,11 @@ class RealtimeGateway:
         
         await self._set_state(GatewayState.SPEAKING)
         await self._speak(greeting)
+        
+        # Add greeting to LLM context so it knows what was said
+        if self.llm:
+            self.llm.add_turn("assistant", greeting)
+        
         await self._set_state(GatewayState.LISTENING)
         self.metrics.start_turn()
     
@@ -194,9 +199,14 @@ class RealtimeGateway:
                 self._utterance_start_time = time.time()
                 self.metrics.start_turn()
             
-            # Accumulate transcript
+            # Accumulate transcript - APPEND final transcripts, don't replace!
             if event.is_final:
-                self._current_utterance = event.text  # Replace with final
+                if self._current_utterance:
+                    # Append with space
+                    self._current_utterance += " " + event.text
+                else:
+                    self._current_utterance = event.text
+                print(f"[{self.call_sid}] STT accumulated: '{self._current_utterance}'")
             else:
                 # For partials, we just track that speech is happening
                 self.metrics.stt_partial_count += 1

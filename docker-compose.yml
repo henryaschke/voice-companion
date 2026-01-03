@@ -7,12 +7,21 @@ services:
     ports:
       - "8000:8000"
     environment:
+      # OpenAI
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Deepgram (STT)
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+      # ElevenLabs (TTS)
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID:-oae6GCCzwoEbfc5FHdEu}
+      # Twilio
       - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
       - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
       - TWILIO_NUMBER_E164=${TWILIO_NUMBER_E164}
+      # Security
       - ADMIN_TOKEN=${ADMIN_TOKEN:-dev-admin-token}
       - FERNET_KEY=${FERNET_KEY}
+      # Application
       - BASE_URL=${BASE_URL:-http://localhost:8000}
       - DATABASE_URL=sqlite+aiosqlite:///./data/voicecompanion.db
     volumes:

@@ -86,7 +86,8 @@ class DeepgramSTT:
         
         # Build URL with query parameters (Deepgram Nova-2 API)
         # CRITICAL: utterance_end_ms MUST be set to receive UtteranceEnd events
-        # vad_events=true enables SpeechStarted events
+        # Note: utterance_end_ms requires interim_results=true
+        # Note: values under 1000ms may not provide benefits per Deepgram docs
         params = {
             "model": "nova-2",
             "language": "de",
@@ -95,9 +96,8 @@ class DeepgramSTT:
             "channels": "1",
             "punctuate": "true",
             "interim_results": "true",
-            "endpointing": str(settings.END_OF_TURN_SILENCE_MS),  # End-of-speech detection (750ms)
-            "utterance_end_ms": str(settings.END_OF_TURN_SILENCE_MS),  # Triggers UtteranceEnd event
-            "vad_events": "true",  # Enable SpeechStarted events
+            "endpointing": "300",  # VAD-based end detection (300ms silence)
+            "utterance_end_ms": "1000",  # Word-timing based end detection (1s after last word)
             "smart_format": "true",
         }
         

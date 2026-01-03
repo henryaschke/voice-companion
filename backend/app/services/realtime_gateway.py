@@ -36,6 +36,46 @@ class GatewayState(Enum):
     SPEAKING = "speaking"
 
 
+# German words that indicate incomplete utterances (user paused mid-sentence)
+INCOMPLETE_MARKERS_DE = {
+    "aber", "und", "oder", "weil", "dass", "wenn", "obwohl", "denn", 
+    "also", "dann", "damit", "sodass", "bevor", "nachdem", "während",
+    "falls", "sofern", "sobald", "indem", "außer", "ob", "wie",
+    "der", "die", "das", "den", "dem", "des", "ein", "eine", "einer",
+    "mein", "meine", "dein", "deine", "sein", "seine", "ihr", "ihre",
+    "mit", "bei", "zu", "von", "für", "auf", "in", "an", "um",
+}
+
+
+def _looks_incomplete(text: str) -> bool:
+    """
+    Check if utterance looks incomplete (user paused mid-sentence).
+    
+    Returns True if the utterance ends with a conjunction or preposition,
+    suggesting the user was mid-thought when they paused.
+    """
+    if not text:
+        return False
+    
+    # Get last word (lowercase, strip punctuation)
+    words = text.lower().strip().rstrip(".,!?").split()
+    if not words:
+        return False
+    
+    last_word = words[-1]
+    
+    # Check if ends with incomplete marker
+    if last_word in INCOMPLETE_MARKERS_DE:
+        return True
+    
+    # Very short utterances (< 3 words) might be incomplete
+    # But only if they don't end with proper punctuation
+    if len(words) < 3 and not text.strip().endswith((".", "!", "?")):
+        return True
+    
+    return False
+
+
 @dataclass
 class GatewayConfig:
     """Configuration for the gateway."""
@@ -216,11 +256,18 @@ class RealtimeGateway:
             print(f"[{self.call_sid}] speech_final received, utterance='{self._current_utterance[:50] if self._current_utterance else '(empty)'}...'")
             
             if self._current_utterance:
+                # Check if utterance looks incomplete (user paused mid-sentence)
+                if _looks_incomplete(self._current_utterance):
+                    print(f"[{self.call_sid}] Utterance looks incomplete, waiting for more: '{self._current_utterance}'")
+                    # Don't process yet - wait for more speech
+                    # The next speech_final will include more text
+                    return
+                
                 print(f"[{self.call_sid}] End of turn detected: '{self._current_utterance}'")
-            self.metrics.end_user_speech()
-            self.metrics.stt_final()
-            
-            await self._process_turn()
+                self.metrics.end_user_speech()
+                self.metrics.stt_final()
+                
+                await self._process_turn()
     
     async def _process_turn(self):
         """Process complete user turn and generate response."""

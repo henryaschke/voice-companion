@@ -88,6 +88,7 @@ class DeepgramSTT:
         # CRITICAL: utterance_end_ms MUST be set to receive UtteranceEnd events
         # Note: utterance_end_ms requires interim_results=true
         # Note: values under 1000ms may not provide benefits per Deepgram docs
+        # TUNING: 1500ms gives users more time for natural pauses mid-sentence
         params = {
             "model": "nova-2",
             "language": "de",
@@ -96,8 +97,8 @@ class DeepgramSTT:
             "channels": "1",
             "punctuate": "true",
             "interim_results": "true",
-            "endpointing": "300",  # VAD-based end detection (300ms silence)
-            "utterance_end_ms": "1000",  # Word-timing based end detection (1s after last word)
+            "endpointing": "400",  # VAD-based end detection (400ms silence for partials)
+            "utterance_end_ms": "1500",  # Word-timing based end detection (1.5s - more forgiving)
             "smart_format": "true",
         }
         

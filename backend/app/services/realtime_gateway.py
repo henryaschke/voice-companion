@@ -36,14 +36,19 @@ class GatewayState(Enum):
     SPEAKING = "speaking"
 
 
-# German words that indicate incomplete utterances (user paused mid-sentence)
+# German conjunctions that indicate incomplete utterances (user paused mid-sentence)
+# NOTE: Only include true conjunctions, NOT prepositions that can be verb prefixes!
+# "auf", "an", "um" etc. are verb prefixes in German (e.g., "Ich lege auf" = "I hang up")
 INCOMPLETE_MARKERS_DE = {
-    "aber", "und", "oder", "weil", "dass", "wenn", "obwohl", "denn", 
-    "also", "dann", "damit", "sodass", "bevor", "nachdem", "während",
-    "falls", "sofern", "sobald", "indem", "außer", "ob", "wie",
+    # Coordinating conjunctions
+    "aber", "und", "oder", "denn", "sondern",
+    # Subordinating conjunctions  
+    "weil", "dass", "wenn", "obwohl", "damit", "sodass", 
+    "bevor", "nachdem", "während", "falls", "sofern", "sobald", "indem", "ob",
+    # Articles at end = definitely incomplete
     "der", "die", "das", "den", "dem", "des", "ein", "eine", "einer",
+    # Possessive pronouns at end = incomplete
     "mein", "meine", "dein", "deine", "sein", "seine", "ihr", "ihre",
-    "mit", "bei", "zu", "von", "für", "auf", "in", "an", "um",
 }
 
 
@@ -51,26 +56,34 @@ def _looks_incomplete(text: str) -> bool:
     """
     Check if utterance looks incomplete (user paused mid-sentence).
     
-    Returns True if the utterance ends with a conjunction or preposition,
+    Returns True if the utterance ends with a conjunction,
     suggesting the user was mid-thought when they paused.
+    
+    IMPORTANT: If sentence ends with punctuation (. ! ?), it's COMPLETE!
     """
     if not text:
         return False
     
-    # Get last word (lowercase, strip punctuation)
-    words = text.lower().strip().rstrip(".,!?").split()
+    text = text.strip()
+    
+    # If ends with proper punctuation → COMPLETE (even if last word looks like a marker)
+    # This handles: "Ich leg jetzt auf." (separable verb - complete sentence!)
+    if text.endswith((".", "!", "?")):
+        return False
+    
+    # Get words without punctuation
+    words = text.lower().rstrip(".,!?").split()
     if not words:
         return False
     
     last_word = words[-1]
     
-    # Check if ends with incomplete marker
+    # Check if ends with incomplete marker (only if no punctuation!)
     if last_word in INCOMPLETE_MARKERS_DE:
         return True
     
-    # Very short utterances (< 3 words) might be incomplete
-    # But only if they don't end with proper punctuation
-    if len(words) < 3 and not text.strip().endswith((".", "!", "?")):
+    # Very short utterances (< 3 words) without punctuation might be incomplete
+    if len(words) < 3:
         return True
     
     return False

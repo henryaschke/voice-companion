@@ -150,26 +150,29 @@ class OpenAILLM:
             
             if self.context.memory_state.get("facts"):
                 facts = self.context.memory_state["facts"]
-                if isinstance(facts, list):
-                    memory_parts.append(f"Fakten: {', '.join(facts[:5])}")
+                if isinstance(facts, list) and facts:
+                    memory_parts.append(f"Fakten über diese Person: {', '.join(facts[:10])}")
             
             if self.context.memory_state.get("preferences"):
                 prefs = self.context.memory_state["preferences"]
-                if isinstance(prefs, list):
-                    memory_parts.append(f"Vorlieben: {', '.join(prefs[:3])}")
+                if isinstance(prefs, list) and prefs:
+                    memory_parts.append(f"Vorlieben: {', '.join(prefs[:5])}")
             
             if self.context.memory_state.get("important_people"):
                 people = self.context.memory_state["important_people"]
-                if isinstance(people, list):
-                    memory_parts.append(f"Wichtige Personen: {', '.join(people[:3])}")
+                if isinstance(people, list) and people:
+                    memory_parts.append(f"Wichtige Personen im Leben: {', '.join(people[:5])}")
             
             if self.context.memory_state.get("recent_topics"):
                 topics = self.context.memory_state["recent_topics"]
-                if isinstance(topics, list):
-                    memory_parts.append(f"Letzte Themen: {', '.join(topics[:3])}")
+                if isinstance(topics, list) and topics:
+                    memory_parts.append(f"Themen aus früheren Gesprächen: {', '.join(topics[:5])}")
             
             if memory_parts:
-                system_content += "\n\nWas du über diese Person weißt:\n" + "\n".join(f"• {p}" for p in memory_parts)
+                memory_text = "\n\n=== LANGZEIT-GEDÄCHTNIS (aus früheren Anrufen) ===\n" + "\n".join(f"• {p}" for p in memory_parts)
+                memory_text += "\n\nNUTZE dieses Wissen natürlich im Gespräch! Wenn der Nutzer fragt ob du dich erinnerst, beziehe dich auf diese Fakten."
+                system_content += memory_text
+                print(f"[{self.call_sid}] Memory injected into LLM: {memory_parts}")
         
         messages.append({"role": "system", "content": system_content})
         

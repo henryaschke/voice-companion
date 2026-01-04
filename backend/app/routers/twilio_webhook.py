@@ -122,22 +122,10 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
     
     gateway: Optional[RealtimeGateway] = None
     stream_sid: Optional[str] = None
+    actual_call_sid = call_sid  # Will be updated from Twilio "start" event
+    person_id: Optional[int] = None
     
     try:
-        # Get call and person info
-        async with async_session_maker() as db:
-            call = await crud.get_call_by_sid(db, call_sid)
-            person = None
-            memory_context = {}
-            
-            if call and call.person_id:
-                person = await crud.get_person(db, call.person_id)
-                memory = await crud.get_memory_state(db, call.person_id)
-                if memory:
-                    memory_context = memory.memory_json
-            
-            person_name = person.display_name if person else "Anrufer"
-        
         # Callback to send audio to Twilio
         async def send_audio_to_twilio(b64_ulaw: str):
             """Send audio chunk to Twilio."""
@@ -152,18 +140,7 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
                 try:
                     await websocket.send_text(json.dumps(media_message))
                 except Exception as e:
-                    print(f"[{call_sid}] Error sending audio: {e}")
-        
-        # Initialize gateway
-        gateway = RealtimeGateway(
-            call_sid=call_sid,
-            person_name=person_name,
-            memory_context=memory_context,
-            on_audio_out=send_audio_to_twilio
-        )
-        
-        # Start gateway (connects to Deepgram, initializes LLM and TTS)
-        await gateway.start()
+                    print(f"[{actual_call_sid}] Error sending audio: {e}")
         
         # Handle incoming Twilio messages
         while True:
@@ -173,36 +150,70 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
                 event_type = data.get("event")
                 
                 if event_type == "connected":
-                    print(f"[{call_sid}] Media stream connected")
+                    print(f"[{actual_call_sid}] Media stream connected")
                 
                 elif event_type == "start":
                     stream_sid = data.get("streamSid")
                     start_info = data.get("start", {})
-                    print(f"[{call_sid}] Stream started: {stream_sid}")
-                    print(f"[{call_sid}] Media format: {start_info.get('mediaFormat', {})}")
+                    
+                    # CRITICAL: Extract actual call_sid from Twilio
+                    actual_call_sid = start_info.get("callSid", call_sid)
+                    
+                    print(f"[{actual_call_sid}] Stream started: {stream_sid}")
+                    print(f"[{actual_call_sid}] Media format: {start_info.get('mediaFormat', {})}")
+                    
+                    # NOW load call and person info with the correct call_sid
+                    person_name = "Anrufer"
+                    memory_context = {}
+                    
+                    async with async_session_maker() as db:
+                        call = await crud.get_call_by_sid(db, actual_call_sid)
+                        
+                        if call and call.person_id:
+                            person_id = call.person_id
+                            person = await crud.get_person(db, person_id)
+                            if person:
+                                person_name = person.display_name
+                            
+                            memory = await crud.get_memory_state(db, person_id)
+                            if memory and memory.memory_json:
+                                memory_context = memory.memory_json
+                                print(f"[{actual_call_sid}] Loaded memory for {person_name}: {list(memory_context.keys())}")
+                    
+                    # Initialize gateway with correct call_sid and memory
+                    gateway = RealtimeGateway(
+                        call_sid=actual_call_sid,
+                        person_name=person_name,
+                        memory_context=memory_context,
+                        on_audio_out=send_audio_to_twilio
+                    )
+                    
+                    # Start gateway (connects to Deepgram, initializes LLM and TTS)
+                    await gateway.start()
                     
                     # Send initial greeting
                     await gateway.send_initial_greeting()
                 
                 elif event_type == "media":
                     # Forward audio to gateway
-                    payload = data.get("media", {}).get("payload", "")
-                    if payload:
-                        await gateway.receive_audio(payload)
+                    if gateway:
+                        payload = data.get("media", {}).get("payload", "")
+                        if payload:
+                            await gateway.receive_audio(payload)
                 
                 elif event_type == "stop":
-                    print(f"[{call_sid}] Stream stop received")
+                    print(f"[{actual_call_sid}] Stream stop received")
                     break
                     
             except WebSocketDisconnect:
-                print(f"[{call_sid}] WebSocket disconnected")
+                print(f"[{actual_call_sid}] WebSocket disconnected")
                 break
             except Exception as e:
-                print(f"[{call_sid}] Error processing message: {e}")
+                print(f"[{actual_call_sid}] Error processing message: {e}")
                 break
         
     except Exception as e:
-        print(f"[{call_sid}] Stream error: {e}")
+        print(f"[{actual_call_sid}] Stream error: {e}")
     
     finally:
         # Cleanup
@@ -212,13 +223,14 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
             full_transcript = gateway.get_full_transcript()
             await gateway.stop()
         
-        # Process call completion in background
-        if full_transcript:
+        # Process call completion in background with correct call_sid
+        if full_transcript and actual_call_sid != "unknown":
+            print(f"[{actual_call_sid}] Starting post-call processing with {len(full_transcript)} chars")
             asyncio.create_task(
-                process_call_completion(call_sid, full_transcript)
+                process_call_completion(actual_call_sid, full_transcript)
             )
         
-        print(f"[{call_sid}] WebSocket handler complete")
+        print(f"[{actual_call_sid}] WebSocket handler complete")
 
 
 @router.post("/status")

@@ -99,6 +99,11 @@ async def process_call_completion(call_sid: str, transcript: str):
                     # Merge new facts with existing
                     merged = merge_memory(existing_json, memory_update)
                     await crud.update_memory_state(db, call.person_id, merged)
+                    
+                    print(f"[{call_sid}] Memory updated for person {call.person_id}:")
+                    print(f"[{call_sid}]   New facts: {memory_update.get('facts', [])}")
+                    print(f"[{call_sid}]   New people: {memory_update.get('important_people', [])}")
+                    print(f"[{call_sid}]   Total facts now: {len(merged.get('facts', []))}")
                 
                 print(f"[{call_sid}] Post-processing complete")
                 

@@ -180,9 +180,12 @@ class RealtimeGateway:
         print(f"[{self.call_sid}] Gateway started, entering LISTENING state")
     
     async def send_initial_greeting(self):
-        """Send initial greeting when call starts."""
-        # Generate a short greeting
-        greeting = f"Hallo{', ' + self.person_name if self.person_name != 'Anrufer' else ''}. Wie geht es dir?"
+        """Send personalized greeting when call starts."""
+        # Build personalized greeting with "Willi"
+        if self.person_name and self.person_name != "Anrufer":
+            greeting = f"Hallo {self.person_name}! Hier ist Willi, dein persönlicher Begleiter. Schön, dass du anrufst. Wie geht es dir heute?"
+        else:
+            greeting = "Hallo! Hier ist Willi, dein persönlicher Begleiter. Schön, dass du anrufst. Wie geht es dir heute?"
         
         print(f"[{self.call_sid}] Sending greeting: {greeting}")
         

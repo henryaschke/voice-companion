@@ -100,8 +100,10 @@ class ElevenLabsTTS:
             "text": text,
             "model_id": model_id,
             "voice_settings": {
-                "stability": 0.5,
-                "similarity_boost": 0.75,
+                "stability": 0.35,  # Lower = more variability/expressiveness
+                "similarity_boost": 0.75,  # Keep voice consistent
+                "style": 0.3,  # Add natural expressiveness
+                "use_speaker_boost": True  # Enhance speaker clarity
             }
         }
         

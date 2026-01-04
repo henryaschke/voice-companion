@@ -36,57 +36,14 @@ class GatewayState(Enum):
     SPEAKING = "speaking"
 
 
-# German conjunctions that indicate incomplete utterances (user paused mid-sentence)
-# NOTE: Only include true conjunctions, NOT prepositions that can be verb prefixes!
-# "auf", "an", "um" etc. are verb prefixes in German (e.g., "Ich lege auf" = "I hang up")
-INCOMPLETE_MARKERS_DE = {
-    # Coordinating conjunctions
-    "aber", "und", "oder", "denn", "sondern",
-    # Subordinating conjunctions  
-    "weil", "dass", "wenn", "obwohl", "damit", "sodass", 
-    "bevor", "nachdem", "während", "falls", "sofern", "sobald", "indem", "ob",
-    # Articles at end = definitely incomplete
-    "der", "die", "das", "den", "dem", "des", "ein", "eine", "einer",
-    # Possessive pronouns at end = incomplete
-    "mein", "meine", "dein", "deine", "sein", "seine", "ihr", "ihre",
-}
-
-
-def _looks_incomplete(text: str) -> bool:
-    """
-    Check if utterance looks incomplete (user paused mid-sentence).
-    
-    Returns True if the utterance ends with a conjunction,
-    suggesting the user was mid-thought when they paused.
-    
-    IMPORTANT: If sentence ends with punctuation (. ! ?), it's COMPLETE!
-    """
-    if not text:
-        return False
-    
-    text = text.strip()
-    
-    # If ends with proper punctuation → COMPLETE (even if last word looks like a marker)
-    # This handles: "Ich leg jetzt auf." (separable verb - complete sentence!)
-    if text.endswith((".", "!", "?")):
-        return False
-    
-    # Get words without punctuation
-    words = text.lower().rstrip(".,!?").split()
-    if not words:
-        return False
-    
-    last_word = words[-1]
-    
-    # Check if ends with incomplete marker (only if no punctuation!)
-    if last_word in INCOMPLETE_MARKERS_DE:
-        return True
-    
-    # Very short utterances (< 3 words) without punctuation might be incomplete
-    if len(words) < 3:
-        return True
-    
-    return False
+# NOTE: We removed the incomplete utterance detection logic.
+# Deepgram's utterance_end_ms=1500 handles turn-taking well.
+# Rule-based detection caused too many false positives:
+# - "Ich leg jetzt auf." was flagged because of "auf"
+# - "So meine ich das" would need punctuation detection
+# 
+# Deepgram's approach is better: If user is silent for 1.5 seconds, they're done.
+# This is more natural than trying to parse German grammar in real-time.
 
 
 @dataclass
@@ -272,13 +229,8 @@ class RealtimeGateway:
             print(f"[{self.call_sid}] speech_final received, utterance='{self._current_utterance[:50] if self._current_utterance else '(empty)'}...'")
             
             if self._current_utterance:
-                # Check if utterance looks incomplete (user paused mid-sentence)
-                if _looks_incomplete(self._current_utterance):
-                    print(f"[{self.call_sid}] Utterance looks incomplete, waiting for more: '{self._current_utterance}'")
-                    # Don't process yet - wait for more speech
-                    # The next speech_final will include more text
-                    return
-                
+                # Trust Deepgram's utterance_end detection (1500ms silence = turn complete)
+                # No rule-based incomplete detection - it caused too many false positives
                 print(f"[{self.call_sid}] End of turn detected: '{self._current_utterance}'")
                 self.metrics.end_user_speech()
                 self.metrics.stt_final()

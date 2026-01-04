@@ -150,12 +150,33 @@ class RealtimeGateway:
         print(f"[{self.call_sid}] Gateway started, entering LISTENING state")
     
     async def send_initial_greeting(self):
-        """Send personalized greeting when call starts."""
-        # Build personalized greeting with "Viola"
+        """Send personalized, variable greeting when call starts."""
+        import random
+        
+        # Extract first name only (split by space, take first part)
+        first_name = None
         if self.person_name and self.person_name != "Anrufer":
-            greeting = f"Hallo {self.person_name}! Hier ist Viola, deine persönliche Begleiterin. Schön, dass du anrufst. Wie geht es dir heute?"
+            first_name = self.person_name.split()[0]
+        
+        # Variable greetings - randomly selected for natural feel
+        if first_name:
+            greetings = [
+                f"Hallo {first_name}! Hier ist Viola. Schön, dass du anrufst. Wie geht's dir?",
+                f"Hey {first_name}! Viola hier. Na, wie läuft's bei dir?",
+                f"Hallo {first_name}! Schön von dir zu hören. Was macht das Leben?",
+                f"Hi {first_name}! Hier ist Viola. Wie geht es dir heute?",
+                f"Hallo {first_name}! Freut mich, von dir zu hören. Alles gut bei dir?",
+                f"Na {first_name}! Viola am Apparat. Wie geht's, wie steht's?",
+            ]
         else:
-            greeting = "Hallo! Hier ist Viola, deine persönliche Begleiterin. Schön, dass du anrufst. Wie geht es dir heute?"
+            greetings = [
+                "Hallo! Hier ist Viola. Schön, dass du anrufst. Wie geht's dir?",
+                "Hey! Viola hier. Na, wie läuft's bei dir?",
+                "Hallo! Schön von dir zu hören. Was macht das Leben?",
+                "Hi! Hier ist Viola. Wie geht es dir heute?",
+            ]
+        
+        greeting = random.choice(greetings)
         
         print(f"[{self.call_sid}] Sending greeting: {greeting}")
         

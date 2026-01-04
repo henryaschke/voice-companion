@@ -32,6 +32,10 @@ async def voice_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     Twilio Voice webhook - handles incoming calls.
     Returns TwiML to start bidirectional Media Stream.
     
+    Access Control:
+    - Only phone numbers registered in the database are allowed
+    - Unknown callers get a polite rejection message in German
+    
     Twilio EU Region (IE1) Configuration:
     - Set in Twilio Console under Phone Numbers > Manage > Active Numbers
     - Select the number and set "Region" to "Ireland (IE1)"
@@ -48,13 +52,30 @@ async def voice_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     # Look up caller by phone number
     person = await crud.get_person_by_phone(db, from_number)
     
-    # Determine account (default to private if unknown caller)
-    account_id = person.account_id if person else 1
+    # ACCESS CONTROL: Reject calls from unknown numbers
+    if not person:
+        print(f"[{call_sid}] REJECTED: Unknown caller {from_number}")
+        
+        response = VoiceResponse()
+        response.say(
+            "Entschuldigung, diese Nummer ist nicht für den Dienst registriert. "
+            "Bitte wenden Sie sich an Ihren Ansprechpartner. Auf Wiederhören.",
+            voice="Polly.Marlene",  # German voice
+            language="de-DE"
+        )
+        response.hangup()
+        
+        return Response(
+            content=str(response),
+            media_type="application/xml"
+        )
     
-    # Create call record immediately
+    print(f"[{call_sid}] Caller identified: {person.display_name} (ID: {person.id})")
+    
+    # Create call record
     call = await crud.create_call(db, CallCreate(
-        account_id=account_id,
-        person_id=person.id if person else None,
+        account_id=person.account_id,
+        person_id=person.id,
         twilio_call_sid=call_sid,
         direction="inbound",
         from_e164=from_number,

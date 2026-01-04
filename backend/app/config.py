@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     
     # ElevenLabs (Streaming TTS)
     ELEVENLABS_API_KEY: str = ""
-    ELEVENLABS_VOICE_ID: str = "rAmra0SCIYOxYmRNDSm3"  # Viola - German female voice
+    ELEVENLABS_VOICE_ID: str = "yVKATr0ZJETwd3tQtpNG"  # Viola - German female voice
     ELEVENLABS_MODEL: str = "eleven_turbo_v2_5"  # Lowest latency model
     
     # Twilio

@@ -388,7 +388,7 @@ DEEPGRAM_API_KEY=...
 
 # ElevenLabs (Streaming TTS)
 ELEVENLABS_API_KEY=sk_...
-ELEVENLABS_VOICE_ID=rAmra0SCIYOxYmRNDSm3
+ELEVENLABS_VOICE_ID=yVKATr0ZJETwd3tQtpNG
 
 # Twilio
 TWILIO_ACCOUNT_SID=AC...
@@ -541,7 +541,7 @@ docker compose up -d --build
 ### Keine Stimme hörbar
 
 1. ElevenLabs API Key prüfen
-2. Voice ID korrekt? (`rAmra0SCIYOxYmRNDSm3`)
+2. Voice ID korrekt? (`yVKATr0ZJETwd3tQtpNG`)
 3. Logs: `TTS complete: X chars -> Y bytes`
 
 ### STT funktioniert nicht

@@ -101,7 +101,7 @@ class DeepgramSTT:
             "punctuate": "true",
             "interim_results": "true",
             "endpointing": "400",  # VAD-based silence detection (400ms)
-            "utterance_end_ms": "1800",  # Turn complete after 1.8s silence (natural pauses)
+            "utterance_end_ms": "1400",  # Turn complete after 1.4s silence
             "smart_format": "true",
         }
         

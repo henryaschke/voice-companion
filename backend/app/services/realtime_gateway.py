@@ -254,7 +254,8 @@ class RealtimeGateway:
             if self._current_utterance:
                 # Check if utterance is just a filler word (user still thinking)
                 # Common German fillers that shouldn't trigger a response alone
-                FILLER_WORDS = {'und', 'aber', 'also', 'ja', 'naja', 'hmm', 'ähm', 'öhm', 'na', 'so', 'äh'}
+                # Note: "ja" removed - it's often a complete response
+                FILLER_WORDS = {'und', 'aber', 'also', 'naja', 'hmm', 'ähm', 'öhm', 'na', 'so', 'äh'}
                 
                 utterance_clean = self._current_utterance.strip().lower().rstrip('.,!?')
                 

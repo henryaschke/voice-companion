@@ -22,10 +22,10 @@ class Settings(BaseSettings):
     ELEVENLABS_API_KEY: str = ""
     ELEVENLABS_VOICE_ID: str = "yVKATr0ZJETwd3tQtpNG"  # Viola - German female voice
     # Model options:
-    # - eleven_turbo_v2_5: Fastest, good for real-time (current)
-    # - eleven_multilingual_v2: Better prosody/intonation, slightly higher latency
+    # - eleven_turbo_v2_5: Fastest but less natural prosody
+    # - eleven_multilingual_v2: Best prosody for German, slightly higher latency
     # - eleven_flash_v2_5: Balance of speed and quality
-    ELEVENLABS_MODEL: str = "eleven_turbo_v2_5"
+    ELEVENLABS_MODEL: str = "eleven_multilingual_v2"  # Better German intonation
     
     # Twilio
     TWILIO_ACCOUNT_SID: str = ""

@@ -130,9 +130,10 @@ class RealtimeGateway:
         self.metrics.start_call(self.call_sid)
         print(f"[{self.call_sid}] Gateway starting...")
         
-        # Initialize STT
+        # Initialize STT with barge-in detection via SpeechStarted
         self.stt = DeepgramSTT(
             on_transcript=self._on_transcript,
+            on_speech_started=self._on_speech_started,
             call_sid=self.call_sid
         )
         await self.stt.connect()
@@ -210,6 +211,20 @@ class RealtimeGateway:
         # Track speech timing
         self._last_speech_time = time.time()
     
+    async def _on_speech_started(self):
+        """
+        Handle SpeechStarted event from Deepgram.
+        This fires IMMEDIATELY when speech is detected, before any transcript.
+        Used for fast barge-in detection.
+        """
+        current_state = self.state
+        
+        # Barge-in: user started speaking while agent is speaking
+        if current_state == GatewayState.SPEAKING:
+            print(f"[{self.call_sid}] BARGE-IN via SpeechStarted - stopping agent NOW!")
+            self.metrics.record_barge_in()
+            await self._handle_barge_in()
+    
     async def _on_transcript(self, event: TranscriptEvent):
         """
         Handle transcript events from STT.
@@ -219,15 +234,12 @@ class RealtimeGateway:
         """
         current_state = self.state
         
-        # Barge-in detection: user speaking while agent is speaking
+        # Note: Barge-in is now handled by _on_speech_started (faster)
+        # But keep this as backup for transcript-based detection
         if current_state == GatewayState.SPEAKING and event.text:
-            print(f"[{self.call_sid}] BARGE-IN detected: '{event.text[:50]}...'")
+            print(f"[{self.call_sid}] BARGE-IN (transcript backup): '{event.text[:50]}...'")
             self.metrics.record_barge_in()
-            
-            # Capture what user is saying - this becomes their new input
             self._barge_in_text = event.text
-            
-            # Stop the agent immediately
             await self._handle_barge_in()
             return
         

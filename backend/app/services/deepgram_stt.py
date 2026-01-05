@@ -51,6 +51,7 @@ class DeepgramSTT:
     def __init__(
         self,
         on_transcript: Optional[Callable[[TranscriptEvent], Awaitable[None]]] = None,
+        on_speech_started: Optional[Callable[[], Awaitable[None]]] = None,
         call_sid: str = "unknown"
     ):
         """
@@ -58,9 +59,11 @@ class DeepgramSTT:
         
         Args:
             on_transcript: Async callback for transcript events
+            on_speech_started: Async callback when speech is detected (for barge-in)
             call_sid: Call identifier for logging
         """
         self.on_transcript = on_transcript
+        self.on_speech_started = on_speech_started
         self.call_sid = call_sid
         
         self.ws: Optional[WebSocketClientProtocol] = None
@@ -241,6 +244,9 @@ class DeepgramSTT:
         
         elif msg_type == "SpeechStarted":
             print(f"[{self.call_sid}] Deepgram: Speech started")
+            # Trigger barge-in callback immediately - this is faster than waiting for transcripts!
+            if self.on_speech_started:
+                await self.on_speech_started()
         
         elif msg_type == "Metadata":
             # Connection metadata

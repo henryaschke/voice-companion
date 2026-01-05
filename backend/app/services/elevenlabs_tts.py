@@ -59,36 +59,19 @@ class ElevenLabsTTS:
     
     def _preprocess_text_for_intonation(self, text: str) -> str:
         """
-        Preprocess text to add ElevenLabs audio tags for proper German intonation.
+        Preprocess text for natural German intonation.
         
-        German questions should have RISING intonation at the end.
-        ElevenLabs v3 supports audio tags like [excited] to control this.
+        Note: Audio tags like [excited] are NOT supported in streaming API.
+        Instead we rely on proper punctuation and the multilingual model.
         
         Args:
             text: Original text
             
         Returns:
-            Text with audio tags for better prosody
+            Clean text (no modifications needed)
         """
-        # Split into sentences
-        sentences = re.split(r'(?<=[.!?])\s+', text.strip())
-        processed = []
-        
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if not sentence:
-                continue
-                
-            # Check if it's a question (ends with ?)
-            if sentence.endswith('?'):
-                # Add soft excitement for rising intonation on questions
-                # [excited] gives a slight upward lift at the end
-                processed.append(f"[excited] {sentence}")
-            else:
-                processed.append(sentence)
-        
-        result = ' '.join(processed)
-        return result
+        # Just return clean text - rely on model's natural prosody
+        return text.strip()
     
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session."""
@@ -138,15 +121,15 @@ class ElevenLabsTTS:
             "text": processed_text,
             "model_id": model_id,
             "voice_settings": {
-                # Optimized for natural German conversation:
-                # - stability 0.45: balanced emotion/stability
-                # - similarity_boost 0.70: clarity without distortion  
-                # - style 0.15: slight expressiveness (not 0, helps with intonation)
+                # Optimized for natural German question intonation:
+                # - stability 0.30: LOW = more expressive, better question intonation
+                # - similarity_boost 0.65: moderate clarity
+                # - style 0.0: let the model handle prosody naturally
                 # - speaker_boost: clearer articulation
                 # - speed 0.85: slightly slower for elderly audience
-                "stability": 0.45,
-                "similarity_boost": 0.70,
-                "style": 0.15,
+                "stability": 0.30,
+                "similarity_boost": 0.65,
+                "style": 0.0,
                 "use_speaker_boost": True,
                 "speed": 0.85
             }

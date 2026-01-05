@@ -3,16 +3,18 @@ ElevenLabs Streaming TTS Client.
 
 Provides high-quality text-to-speech with:
 - Streaming audio output for low latency
-- Natural German voices
-- Direct PCM output (convertible to μ-law for Twilio)
+- Natural German voices with proper intonation
+- Audio-Tags for emotional control ([excited], etc.)
+- Direct μ-law output for Twilio
 
-Audio Output:
-- Format: PCM 16-bit signed
-- Sample rate: We request 22050 Hz and downsample, or use mp3_44100 and decode
-- For simplicity, we'll use the streaming endpoint with pcm_24000 and downsample
+Best Practices Applied:
+- Use audio tags for questions to get rising intonation
+- eleven_flash_v2_5 model for best German prosody
+- Optimized voice settings for natural speech
 """
 import asyncio
 import aiohttp
+import re
 from typing import Optional, Callable, Awaitable, AsyncGenerator
 from dataclasses import dataclass
 
@@ -33,8 +35,8 @@ class ElevenLabsTTS:
     
     Features:
     - Streaming audio generation
-    - Low-latency turbo model
-    - German voice support
+    - Audio-Tags for question intonation
+    - German voice support with proper prosody
     - Cancellation support
     """
     
@@ -54,6 +56,39 @@ class ElevenLabsTTS:
         # Metrics
         self.total_chars = 0
         self.total_chunks = 0
+    
+    def _preprocess_text_for_intonation(self, text: str) -> str:
+        """
+        Preprocess text to add ElevenLabs audio tags for proper German intonation.
+        
+        German questions should have RISING intonation at the end.
+        ElevenLabs v3 supports audio tags like [excited] to control this.
+        
+        Args:
+            text: Original text
+            
+        Returns:
+            Text with audio tags for better prosody
+        """
+        # Split into sentences
+        sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+        processed = []
+        
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+                
+            # Check if it's a question (ends with ?)
+            if sentence.endswith('?'):
+                # Add soft excitement for rising intonation on questions
+                # [excited] gives a slight upward lift at the end
+                processed.append(f"[excited] {sentence}")
+            else:
+                processed.append(sentence)
+        
+        result = ' '.join(processed)
+        return result
     
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session."""
@@ -84,7 +119,10 @@ class ElevenLabsTTS:
             return b""
         
         self._cancelled = False
-        self.total_chars += len(text)
+        
+        # Preprocess text for proper German intonation (questions get rising pitch)
+        processed_text = self._preprocess_text_for_intonation(text)
+        self.total_chars += len(processed_text)
         
         voice_id = settings.ELEVENLABS_VOICE_ID
         model_id = settings.ELEVENLABS_MODEL
@@ -97,20 +135,20 @@ class ElevenLabsTTS:
         }
         
         payload = {
-            "text": text,
+            "text": processed_text,
             "model_id": model_id,
             "voice_settings": {
-                # Based on ElevenLabs best practices research:
-                # - stability 0.35-0.45: emotional but stable output
-                # - similarity_boost 0.75: clarity without distortion  
-                # - style 0.0: research recommends 0 for stability!
+                # Optimized for natural German conversation:
+                # - stability 0.45: balanced emotion/stability
+                # - similarity_boost 0.70: clarity without distortion  
+                # - style 0.15: slight expressiveness (not 0, helps with intonation)
                 # - speaker_boost: clearer articulation
-                # - speed 0.8: 20% slower for more natural elderly conversation
-                "stability": 0.40,
-                "similarity_boost": 0.75,
-                "style": 0.0,
+                # - speed 0.85: slightly slower for elderly audience
+                "stability": 0.45,
+                "similarity_boost": 0.70,
+                "style": 0.15,
                 "use_speaker_boost": True,
-                "speed": 0.8
+                "speed": 0.85
             }
         }
         
@@ -144,7 +182,7 @@ class ElevenLabsTTS:
                         if on_audio:
                             await on_audio(chunk)
             
-            print(f"[{self.call_sid}] TTS complete: {len(text)} chars -> {len(all_audio)} bytes")
+            print(f"[{self.call_sid}] TTS complete: '{text[:50]}...' -> {len(all_audio)} bytes")
             return all_audio
             
         except Exception as e:

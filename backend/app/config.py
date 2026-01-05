@@ -23,9 +23,9 @@ class Settings(BaseSettings):
     ELEVENLABS_VOICE_ID: str = "nGISSznGHAgSTKaMXEPO"  # New German female voice
     # Model options:
     # - eleven_turbo_v2_5: Fastest but less natural prosody
-    # - eleven_multilingual_v2: Best prosody for German, slightly higher latency
-    # - eleven_flash_v2_5: Balance of speed and quality
-    ELEVENLABS_MODEL: str = "eleven_multilingual_v2"  # Better German intonation
+    # - eleven_multilingual_v2: Good prosody, higher latency
+    # - eleven_flash_v2_5: Best balance - supports audio tags, good German
+    ELEVENLABS_MODEL: str = "eleven_flash_v2_5"  # Supports audio tags for intonation
     
     # Twilio
     TWILIO_ACCOUNT_SID: str = ""

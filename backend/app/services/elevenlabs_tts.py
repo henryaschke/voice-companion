@@ -105,10 +105,12 @@ class ElevenLabsTTS:
                 # - similarity_boost 0.75: clarity without distortion  
                 # - style 0.0: research recommends 0 for stability!
                 # - speaker_boost: clearer articulation
+                # - speed 0.8: 20% slower for more natural elderly conversation
                 "stability": 0.40,
                 "similarity_boost": 0.75,
                 "style": 0.0,
-                "use_speaker_boost": True
+                "use_speaker_boost": True,
+                "speed": 0.8
             }
         }
         

@@ -20,12 +20,9 @@ class Settings(BaseSettings):
     
     # ElevenLabs (Streaming TTS)
     ELEVENLABS_API_KEY: str = ""
-    ELEVENLABS_VOICE_ID: str = "nGISSznGHAgSTKaMXEPO"  # New German female voice
-    # Model options:
-    # - eleven_turbo_v2_5: Fastest but less natural prosody
-    # - eleven_multilingual_v2: Higher latency, less natural
-    # - eleven_flash_v2_5: Best balance of speed and quality
-    ELEVENLABS_MODEL: str = "eleven_flash_v2_5"  # User preferred
+    ELEVENLABS_VOICE_ID: str = "pMrwpTuGOma7Nubxs5jo"  # Lea - native German female (Hochdeutsch)
+    # Model: eleven_multilingual_v2 recommended for Lea's best German prosody
+    ELEVENLABS_MODEL: str = "eleven_multilingual_v2"
     
     # Twilio
     TWILIO_ACCOUNT_SID: str = ""

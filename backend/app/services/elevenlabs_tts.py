@@ -1,16 +1,16 @@
 """
-ElevenLabs Streaming TTS Client.
+ElevenLabs Streaming TTS Client - Optimized for Voice "Lea"
 
-Provides high-quality text-to-speech with:
-- Streaming audio output for low latency
-- Natural German voices with proper intonation
-- Audio-Tags for emotional control ([excited], etc.)
-- Direct μ-law output for Twilio
+Voice: Lea (pMrwpTuGOma7Nubxs5jo)
+- Native German female, neutral Hochdeutsch
+- Calm, warm, clear, understated tone
+- Optimized for phone audio (8kHz) and elderly listeners
 
 Best Practices Applied:
-- Use audio tags for questions to get rising intonation
-- eleven_flash_v2_5 model for best German prosody
-- Optimized voice settings for natural speech
+- eleven_multilingual_v2 model for best German prosody
+- Moderate stability (0.40) for natural expression without instability
+- Restrained style (0.20) to avoid theatrical delivery
+- Text preprocessing for natural sentence rhythm and breathing pauses
 """
 import asyncio
 import aiohttp
@@ -31,16 +31,19 @@ class TTSChunk:
 
 class ElevenLabsTTS:
     """
-    Streaming TTS client using ElevenLabs.
+    Streaming TTS client using ElevenLabs, optimized for voice "Lea".
     
     Features:
-    - Streaming audio generation
-    - Audio-Tags for question intonation
-    - German voice support with proper prosody
-    - Cancellation support
+    - Streaming audio generation with low latency
+    - Text preprocessing for natural German rhythm
+    - Optimized for phone audio clarity (8kHz)
+    - Cancellation support for barge-in
     """
     
     ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1"
+    
+    # Lea-specific tuning: max words per sentence before considering a split
+    MAX_WORDS_PER_CHUNK = 20
     
     def __init__(self, call_sid: str = "unknown"):
         """
@@ -57,21 +60,87 @@ class ElevenLabsTTS:
         self.total_chars = 0
         self.total_chunks = 0
     
-    def _preprocess_text_for_intonation(self, text: str) -> str:
+    def _preprocess_text_for_lea(self, text: str) -> str:
         """
-        Preprocess text for natural German intonation.
+        Preprocess text for natural German speech with voice Lea.
         
-        Note: Audio tags like [excited] are NOT supported in streaming API.
-        Instead we rely on proper punctuation and the multilingual model.
+        Lea-specific optimizations:
+        - Short sentences (max ~20 words) prevent melodic over-smoothing
+        - Strategic comma placement for natural breathing pauses
+        - Split long compound sentences on conjunctions
+        - Preserve question marks for proper rising intonation
         
         Args:
-            text: Original text
+            text: Original text from LLM
             
         Returns:
-            Clean text (no modifications needed)
+            Preprocessed text optimized for Lea's natural delivery
         """
-        # Just return clean text - rely on model's natural prosody
-        return text.strip()
+        if not text:
+            return ""
+        
+        text = text.strip()
+        
+        # Remove any stage directions or emojis that might have slipped through
+        text = re.sub(r'\[.*?\]', '', text)  # Remove [brackets]
+        text = re.sub(r'[^\w\s.,!?äöüÄÖÜß\-]', '', text)  # Keep only text chars
+        
+        # Split very long sentences on German conjunctions for breathing pauses
+        # Only split if sentence is getting too long (>20 words)
+        words = text.split()
+        if len(words) > self.MAX_WORDS_PER_CHUNK:
+            text = self._split_long_sentences(text)
+        
+        # Ensure proper spacing after punctuation
+        text = re.sub(r'([.,!?])([A-ZÄÖÜa-zäöü])', r'\1 \2', text)
+        
+        # Clean up multiple spaces
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        return text
+    
+    def _split_long_sentences(self, text: str) -> str:
+        """
+        Split long German sentences on natural break points.
+        
+        Breaks on conjunctions like 'und', 'aber', 'oder', 'denn', 'weil'
+        when the sentence is getting too long, inserting commas for pauses.
+        
+        Args:
+            text: Long text that may need splitting
+            
+        Returns:
+            Text with natural break points added
+        """
+        # German conjunctions that are natural break points
+        conjunctions = r'\b(und|aber|oder|denn|weil|dass|wenn|obwohl|während)\b'
+        
+        result = []
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        
+        for sentence in sentences:
+            words = sentence.split()
+            if len(words) > self.MAX_WORDS_PER_CHUNK:
+                # Find conjunction near the middle and add comma before it
+                # This creates a natural breathing pause
+                parts = re.split(f'({conjunctions})', sentence, flags=re.IGNORECASE)
+                if len(parts) > 1:
+                    rebuilt = []
+                    word_count = 0
+                    for i, part in enumerate(parts):
+                        part_words = len(part.split())
+                        word_count += part_words
+                        
+                        # Add comma pause before conjunction if we're past halfway
+                        if (word_count > self.MAX_WORDS_PER_CHUNK // 2 and 
+                            part.lower().strip() in ['und', 'aber', 'oder', 'denn', 'weil', 'dass', 'wenn', 'obwohl', 'während']):
+                            rebuilt.append(',')
+                        rebuilt.append(part)
+                    sentence = ''.join(rebuilt)
+            
+            result.append(sentence)
+        
+        return ' '.join(result)
     
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session."""
@@ -103,8 +172,8 @@ class ElevenLabsTTS:
         
         self._cancelled = False
         
-        # Preprocess text for proper German intonation (questions get rising pitch)
-        processed_text = self._preprocess_text_for_intonation(text)
+        # Preprocess text for Lea's optimal delivery
+        processed_text = self._preprocess_text_for_lea(text)
         self.total_chars += len(processed_text)
         
         voice_id = settings.ELEVENLABS_VOICE_ID
@@ -117,21 +186,34 @@ class ElevenLabsTTS:
             "Content-Type": "application/json",
         }
         
+        # ═══════════════════════════════════════════════════════════════
+        # LEA VOICE SETTINGS - Tuned for natural German phone conversation
+        # ═══════════════════════════════════════════════════════════════
+        # Voice: Lea (pMrwpTuGOma7Nubxs5jo) - native German, Hochdeutsch
+        # Target: calm, warm, clear, natural - NOT theatrical or robotic
+        #
+        # stability: 0.40 (moderate - natural expression without instability)
+        #   - Lower than 0.35: can cause inconsistent delivery
+        #   - Higher than 0.50: causes robotic flatness
+        #
+        # similarity_boost: 0.75 (clarity without distortion)
+        #   - Ensures clear articulation on 8kHz phone audio
+        #
+        # style: 0.20 (restrained - avoids theatrical "assistant voice")
+        #   - Higher than 0.30: causes unnatural, exaggerated delivery
+        #   - Zero: can sound too flat
+        #
+        # use_speaker_boost: true (clearer articulation for elderly listeners)
+        # ═══════════════════════════════════════════════════════════════
+        
         payload = {
             "text": processed_text,
             "model_id": model_id,
             "voice_settings": {
-                # Optimized for natural German question intonation:
-                # - stability 0.30: LOW = more expressive, better question intonation
-                # - similarity_boost 0.65: moderate clarity
-                # - style 0.0: let the model handle prosody naturally
-                # - speaker_boost: clearer articulation
-                # - speed 0.85: slightly slower for elderly audience
-                "stability": 0.30,
-                "similarity_boost": 0.65,
-                "style": 0.0,
-                "use_speaker_boost": True,
-                "speed": 0.85
+                "stability": 0.40,
+                "similarity_boost": 0.75,
+                "style": 0.20,
+                "use_speaker_boost": True
             }
         }
         

@@ -118,9 +118,11 @@ class RealtimeGateway:
         self._last_speech_time = 0.0
         self._pending_response_task: Optional[asyncio.Task] = None
         
-        # Barge-in detection
+        # Barge-in detection via local VAD (Voice Activity Detection)
         self._speech_during_speaking = False
         self._barge_in_text = ""  # Text captured during barge-in
+        self._vad_threshold = 500  # RMS energy threshold for speech detection
+        self._consecutive_speech_frames = 0  # Require multiple frames to avoid false positives
         
         # Full conversation for post-processing
         self.full_conversation: list[dict] = []
@@ -204,12 +206,58 @@ class RealtimeGateway:
         # Convert to PCM for Deepgram
         pcm_bytes = base64_ulaw_to_pcm(b64_ulaw)
         
-        # Always send to STT (even during SPEAKING for barge-in detection)
+        # LOCAL VAD: Check audio energy for barge-in detection
+        # This is INSTANT - no waiting for Deepgram!
+        if self.state == GatewayState.SPEAKING:
+            energy = self._calculate_audio_energy(pcm_bytes)
+            if energy > self._vad_threshold:
+                self._consecutive_speech_frames += 1
+                # Require 3 consecutive frames of speech to avoid false positives
+                if self._consecutive_speech_frames >= 3:
+                    print(f"[{self.call_sid}] BARGE-IN via local VAD (energy={energy:.0f}) - stopping agent!")
+                    self.metrics.record_barge_in()
+                    await self._handle_barge_in()
+                    self._consecutive_speech_frames = 0
+            else:
+                self._consecutive_speech_frames = 0
+        
+        # Always send to STT
         if self.stt:
             await self.stt.send_audio(pcm_bytes)
         
         # Track speech timing
         self._last_speech_time = time.time()
+    
+    def _calculate_audio_energy(self, pcm_bytes: bytes) -> float:
+        """
+        Calculate RMS energy of PCM audio for VAD.
+        
+        Args:
+            pcm_bytes: PCM 16-bit signed little-endian audio
+            
+        Returns:
+            RMS energy value (0-32767 range)
+        """
+        import struct
+        
+        if len(pcm_bytes) < 2:
+            return 0.0
+        
+        # Unpack PCM samples (16-bit signed)
+        num_samples = len(pcm_bytes) // 2
+        try:
+            samples = struct.unpack(f'<{num_samples}h', pcm_bytes[:num_samples*2])
+        except struct.error:
+            return 0.0
+        
+        # Calculate RMS energy
+        if not samples:
+            return 0.0
+        
+        sum_squares = sum(s * s for s in samples)
+        rms = (sum_squares / len(samples)) ** 0.5
+        
+        return rms
     
     async def _on_speech_started(self):
         """

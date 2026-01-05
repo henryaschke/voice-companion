@@ -75,7 +75,8 @@ class RealtimeGateway:
         call_sid: str,
         person_name: str = "Anrufer",
         memory_context: Optional[dict] = None,
-        on_audio_out: Optional[Callable[[str], Awaitable[None]]] = None
+        on_audio_out: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_clear_audio: Optional[Callable[[], Awaitable[None]]] = None
     ):
         """
         Initialize the gateway.
@@ -85,11 +86,13 @@ class RealtimeGateway:
             person_name: Name of the person for personalization
             memory_context: Long-term memory from database
             on_audio_out: Callback to send audio to Twilio (base64 μ-law)
+            on_clear_audio: Callback to clear Twilio's audio buffer (for barge-in)
         """
         self.call_sid = call_sid
         self.person_name = person_name
         self.memory_context = memory_context or {}
         self.on_audio_out = on_audio_out
+        self.on_clear_audio = on_clear_audio  # Callback to clear Twilio's audio buffer
         
         # Configuration
         self.config = GatewayConfig(
@@ -431,6 +434,15 @@ class RealtimeGateway:
     async def _handle_barge_in(self):
         """Handle user interruption (barge-in)."""
         print(f"[{self.call_sid}] Handling barge-in - stopping agent...")
+        
+        # CRITICAL: Clear Twilio's audio buffer FIRST
+        # This stops the already-buffered audio from playing
+        if self.on_clear_audio:
+            try:
+                await self.on_clear_audio()
+                print(f"[{self.call_sid}] Twilio audio buffer cleared")
+            except Exception as e:
+                print(f"[{self.call_sid}] Error clearing audio buffer: {e}")
         
         # Cancel LLM generation
         if self.llm:

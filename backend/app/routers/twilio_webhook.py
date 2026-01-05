@@ -163,6 +163,23 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
                 except Exception as e:
                     print(f"[{actual_call_sid}] Error sending audio: {e}")
         
+        # Callback to clear Twilio's audio buffer (for barge-in)
+        async def clear_twilio_audio():
+            """
+            Send 'clear' event to Twilio to stop playing buffered audio.
+            CRITICAL for barge-in: Without this, already-sent audio keeps playing!
+            """
+            if stream_sid:
+                clear_message = {
+                    "event": "clear",
+                    "streamSid": stream_sid
+                }
+                try:
+                    await websocket.send_text(json.dumps(clear_message))
+                    print(f"[{actual_call_sid}] Sent 'clear' event to Twilio")
+                except Exception as e:
+                    print(f"[{actual_call_sid}] Error clearing audio: {e}")
+        
         # Handle incoming Twilio messages
         while True:
             try:
@@ -206,7 +223,8 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
                         call_sid=actual_call_sid,
                         person_name=person_name,
                         memory_context=memory_context,
-                        on_audio_out=send_audio_to_twilio
+                        on_audio_out=send_audio_to_twilio,
+                        on_clear_audio=clear_twilio_audio
                     )
                     
                     # Start gateway (connects to Deepgram, initializes LLM and TTS)

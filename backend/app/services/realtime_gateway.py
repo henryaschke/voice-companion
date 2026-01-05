@@ -121,6 +121,10 @@ class RealtimeGateway:
         # Barge-in detection
         self._speech_during_speaking = False
         
+        # Cooldown after speaking (to discard stale transcripts)
+        self._speaking_ended_time = 0.0
+        self._post_speaking_cooldown_ms = 500  # Ignore transcripts for 500ms after speaking
+        
         # Full conversation for post-processing
         self.full_conversation: list[dict] = []
     
@@ -228,6 +232,15 @@ class RealtimeGateway:
         # Only process transcripts in LISTENING state
         if current_state != GatewayState.LISTENING:
             return
+        
+        # Cooldown after speaking - ignore transcripts that arrive too soon
+        # These are likely "stale" transcripts from speech during agent's turn
+        if self._speaking_ended_time > 0:
+            time_since_speaking_ended = (time.time() - self._speaking_ended_time) * 1000
+            if time_since_speaking_ended < self._post_speaking_cooldown_ms:
+                if event.text:
+                    print(f"[{self.call_sid}] Ignoring stale transcript (cooldown): '{event.text[:30]}...'")
+                return
         
         if event.text:
             # Start utterance timing if new
@@ -393,6 +406,15 @@ class RealtimeGateway:
             self.state = new_state
             if old_state != new_state:
                 print(f"[{self.call_sid}] State: {old_state.value} -> {new_state.value}")
+                
+                # When transitioning from SPEAKING to LISTENING:
+                # - Record the time (for cooldown)
+                # - Clear any accumulated utterance (it was spoken during agent's turn)
+                if old_state == GatewayState.SPEAKING and new_state == GatewayState.LISTENING:
+                    self._speaking_ended_time = time.time()
+                    if self._current_utterance:
+                        print(f"[{self.call_sid}] Clearing stale utterance from speaking phase: '{self._current_utterance[:50]}...'")
+                        self._current_utterance = ""
     
     def get_full_transcript(self) -> str:
         """Get full conversation as text for post-processing."""

@@ -87,7 +87,11 @@ class DeepgramSTT:
         # Build URL with query parameters (Deepgram Nova-2 API)
         # CRITICAL: utterance_end_ms MUST be set to receive UtteranceEnd events
         # Note: utterance_end_ms requires interim_results=true
-        # TUNING: 1000ms for faster response while still allowing natural pauses
+        # 
+        # TUNING for natural German conversation:
+        # - utterance_end_ms: 1800ms allows for thinking pauses without interrupting
+        #   (elderly users especially need more time to gather thoughts)
+        # - endpointing: 400ms for VAD-based partial detection
         params = {
             "model": "nova-2",
             "language": "de",
@@ -96,8 +100,8 @@ class DeepgramSTT:
             "channels": "1",
             "punctuate": "true",
             "interim_results": "true",
-            "endpointing": "300",  # VAD-based end detection (300ms silence for partials)
-            "utterance_end_ms": "1000",  # Word-timing based end detection (1s - faster response)
+            "endpointing": "400",  # VAD-based silence detection (400ms)
+            "utterance_end_ms": "1800",  # Turn complete after 1.8s silence (natural pauses)
             "smart_format": "true",
         }
         

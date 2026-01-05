@@ -36,14 +36,16 @@ class GatewayState(Enum):
     SPEAKING = "speaking"
 
 
-# NOTE: We removed the incomplete utterance detection logic.
-# Deepgram's utterance_end_ms=1500 handles turn-taking well.
-# Rule-based detection caused too many false positives:
-# - "Ich leg jetzt auf." was flagged because of "auf"
-# - "So meine ich das" would need punctuation detection
+# TURN-TAKING STRATEGY:
+# - Deepgram's utterance_end_ms=1800 handles most turn-taking (1.8s silence = done)
+# - We only filter out single filler words (und, aber, also, ja, etc.)
+# - No complex grammar parsing - that caused false positives
 # 
-# Deepgram's approach is better: If user is silent for 1.5 seconds, they're done.
-# This is more natural than trying to parse German grammar in real-time.
+# Why 1.8 seconds?
+# - Elderly users need more time to gather thoughts
+# - German compound sentences have natural mid-sentence pauses
+# - 1.0s was too aggressive (cut off "Und..." while thinking)
+# - 2.0s+ feels too slow/laggy
 
 
 @dataclass
@@ -250,8 +252,17 @@ class RealtimeGateway:
             print(f"[{self.call_sid}] speech_final received, utterance='{self._current_utterance[:50] if self._current_utterance else '(empty)'}...'")
             
             if self._current_utterance:
-                # Trust Deepgram's utterance_end detection (1500ms silence = turn complete)
-                # No rule-based incomplete detection - it caused too many false positives
+                # Check if utterance is just a filler word (user still thinking)
+                # Common German fillers that shouldn't trigger a response alone
+                FILLER_WORDS = {'und', 'aber', 'also', 'ja', 'naja', 'hmm', 'ähm', 'öhm', 'na', 'so', 'äh'}
+                
+                utterance_clean = self._current_utterance.strip().lower().rstrip('.,!?')
+                
+                # If the entire utterance is just a filler word, wait for more
+                if utterance_clean in FILLER_WORDS:
+                    print(f"[{self.call_sid}] Filler word detected, waiting for more: '{self._current_utterance}'")
+                    return
+                
                 print(f"[{self.call_sid}] End of turn detected: '{self._current_utterance}'")
                 self.metrics.end_user_speech()
                 self.metrics.stt_final()

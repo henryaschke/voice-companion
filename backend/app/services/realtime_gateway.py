@@ -53,7 +53,7 @@ class RealtimeGateway:
         call_sid: str,
         person_name: str = "Anrufer",
         memory_context: Optional[dict] = None,
-        on_audio_out: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_audio_out: Optional[Callable[[str, int], Awaitable[None]]] = None,  # (audio, turn_id)
         on_clear_audio: Optional[Callable[[], Awaitable[None]]] = None
     ):
         """
@@ -389,7 +389,8 @@ class RealtimeGateway:
                     first_audio = False
                 
                 if self.on_audio_out:
-                    await self.on_audio_out(b64_ulaw)
+                    # Pass turn ID so Twilio callback can also verify
+                    await self.on_audio_out(b64_ulaw, my_turn_id)
             
             # Synthesize and stream this sentence
             await self.tts.synthesize_to_ulaw(sentence, on_tts_audio)
@@ -398,22 +399,41 @@ class RealtimeGateway:
             # First LLM call - may return text or tool call request
             result = await self.llm.generate_streaming(user_text, on_sentence)
             
+            # Check if this turn was cancelled during generation
+            if self._cancelled or self._current_turn_id != my_turn_id:
+                print(f"[{self.call_sid}] TURN {my_turn_id} CANCELLED - not completing")
+                await self._set_state(GatewayState.LISTENING)
+                return
+            
             # Check if this is a tool call request
             if isinstance(result, ToolCallRequest):
                 await self._handle_tool_call(user_text, result, on_sentence)
+                
+                # Check again after tool call
+                if self._cancelled or self._current_turn_id != my_turn_id:
+                    print(f"[{self.call_sid}] TURN {my_turn_id} CANCELLED after tool - not completing")
+                    await self._set_state(GatewayState.LISTENING)
+                    return
             else:
                 self.metrics.llm_complete()
                 self.metrics.tts_complete()
                 
         except Exception as e:
             print(f"[{self.call_sid}] Response generation error: {e}")
+            await self._set_state(GatewayState.LISTENING)
+            return
         
-        # Add response to conversation
-        if response_text.strip():
-            self.full_conversation.append({"role": "assistant", "content": response_text.strip()})
+        # CRITICAL: Only add to conversation and emit metrics if turn was NOT cancelled
+        if not self._cancelled and self._current_turn_id == my_turn_id:
+            if response_text.strip():
+                self.full_conversation.append({"role": "assistant", "content": response_text.strip()})
+            
+            # End turn and emit metrics
+            self.metrics.end_turn()
+            print(f"[{self.call_sid}] TURN {my_turn_id} COMPLETED")
+        else:
+            print(f"[{self.call_sid}] TURN {my_turn_id} NOT completed (cancelled={self._cancelled}, current={self._current_turn_id})")
         
-        # End turn and return to listening
-        self.metrics.end_turn()
         await self._set_state(GatewayState.LISTENING)
         
         # Start new turn timing
@@ -463,7 +483,8 @@ class RealtimeGateway:
                 first_audio = False
             
             if self.on_audio_out:
-                await self.on_audio_out(b64_ulaw)
+                # Pass turn ID so Twilio callback can also verify
+                await self.on_audio_out(b64_ulaw, my_turn_id)
         
         await self.tts.synthesize_to_ulaw(fetching_phrase, on_fetching_audio)
         
@@ -524,7 +545,8 @@ class RealtimeGateway:
                 first_audio = False
             
             if self.on_audio_out:
-                await self.on_audio_out(b64_ulaw)
+                # Pass turn ID so Twilio callback can also verify
+                await self.on_audio_out(b64_ulaw, my_turn_id)
         
         await self.tts.synthesize_to_ulaw(text, on_audio)
         self.metrics.tts_complete()
@@ -534,12 +556,11 @@ class RealtimeGateway:
     
     async def _handle_barge_in(self):
         """Handle user interruption (barge-in)."""
-        old_turn_id = self._current_turn_id
+        # CRITICAL: Do NOT increment turn ID here!
+        # Turn ID is ONLY incremented in _process_turn when a new turn starts.
+        # This ensures Turn IDs are strictly monotonic without gaps.
         
-        # CRITICAL: Increment turn ID FIRST - this immediately invalidates all old audio
-        self._current_turn_id += 1
-        
-        print(f"[{self.call_sid}] BARGE-IN: Turn {old_turn_id} cancelled, now turn {self._current_turn_id}")
+        print(f"[{self.call_sid}] BARGE-IN: Turn {self._current_turn_id} cancelled")
         
         # Set cancelled flag to stop any ongoing callbacks
         self._cancelled = True
@@ -549,7 +570,7 @@ class RealtimeGateway:
         if self.on_clear_audio:
             try:
                 await self.on_clear_audio()
-                print(f"[{self.call_sid}] Twilio audio buffer cleared")
+                print(f"[{self.call_sid}] Twilio audio buffer cleared for turn {self._current_turn_id}")
             except Exception as e:
                 print(f"[{self.call_sid}] Error clearing audio buffer: {e}")
         

@@ -360,11 +360,14 @@ class OpenAILLM:
             if sentence_buffer.strip() and on_sentence and not self._cancelled:
                 await on_sentence(sentence_buffer.strip())
             
-            # Add assistant response to buffer
-            if full_response:
+            # CRITICAL: Only add to buffer if NOT cancelled
+            # Cancelled responses should not pollute conversation history
+            if full_response and not self._cancelled:
                 self.add_turn("assistant", full_response)
+                print(f"[{self.call_sid}] LLM response: {full_response[:100]}...")
+            elif self._cancelled:
+                print(f"[{self.call_sid}] LLM response DISCARDED (cancelled): {full_response[:50]}...")
             
-            print(f"[{self.call_sid}] LLM response: {full_response[:100]}...")
             return full_response
             
         except Exception as e:
@@ -460,11 +463,13 @@ class OpenAILLM:
             if sentence_buffer.strip() and on_sentence and not self._cancelled:
                 await on_sentence(sentence_buffer.strip())
             
-            # Add assistant response to buffer
-            if full_response:
+            # CRITICAL: Only add to buffer if NOT cancelled
+            if full_response and not self._cancelled:
                 self.add_turn("assistant", full_response)
+                print(f"[{self.call_sid}] LLM response (with tool): {full_response[:100]}...")
+            elif self._cancelled:
+                print(f"[{self.call_sid}] LLM response (with tool) DISCARDED (cancelled): {full_response[:50]}...")
             
-            print(f"[{self.call_sid}] LLM response (with tool): {full_response[:100]}...")
             return full_response
             
         except Exception as e:

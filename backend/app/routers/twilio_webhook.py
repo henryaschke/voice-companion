@@ -148,20 +148,31 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
     
     try:
         # Callback to send audio to Twilio
-        async def send_audio_to_twilio(b64_ulaw: str):
+        async def send_audio_to_twilio(b64_ulaw: str, audio_turn_id: int):
             """
             Send audio chunk to Twilio.
             
             CRITICAL: This is the LAST LINE OF DEFENSE for barge-in.
-            The turn ID check happens in the gateway's on_tts_audio callback.
-            Here we just check _cancelled as a final safeguard.
+            Double-checks both:
+            1. _cancelled flag
+            2. Turn ID matches current turn
+            
+            Args:
+                b64_ulaw: Base64 encoded μ-law audio
+                audio_turn_id: The turn ID this audio belongs to
             """
             if not gateway:
                 return
             
-            # CRITICAL: Block ALL audio if barge-in is active
+            # CRITICAL: Block audio if:
+            # 1. Barge-in is active (_cancelled = True)
+            # 2. This audio is from an OLD turn (turn ID mismatch)
             if gateway._cancelled:
                 return  # Silently drop - barge-in active
+            
+            if audio_turn_id != gateway._current_turn_id:
+                # This audio is from a stale turn - discard silently
+                return
             
             if stream_sid and b64_ulaw:
                 media_message = {

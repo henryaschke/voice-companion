@@ -333,6 +333,12 @@ class RealtimeGateway:
         
         async def on_sentence(sentence: str):
             nonlocal response_text, first_sentence
+            
+            # CHECK: Stop if barge-in happened
+            if self._cancelled:
+                print(f"[{self.call_sid}] Skipping sentence due to barge-in: '{sentence[:30]}...'")
+                return
+            
             response_text += sentence + " "
             
             if first_sentence:
@@ -347,6 +353,11 @@ class RealtimeGateway:
             
             async def on_tts_audio(b64_ulaw: str):
                 nonlocal first_audio
+                
+                # CRITICAL: Stop sending audio if barge-in happened!
+                if self._cancelled:
+                    return
+                
                 if first_audio:
                     self.metrics.tts_first_audio()
                     first_audio = False
@@ -413,6 +424,11 @@ class RealtimeGateway:
         
         async def on_fetching_audio(b64_ulaw: str):
             nonlocal first_audio
+            
+            # Stop if barge-in happened
+            if self._cancelled:
+                return
+            
             if first_audio:
                 self.metrics.tts_first_audio()
                 first_audio = False
@@ -465,6 +481,11 @@ class RealtimeGateway:
         
         async def on_audio(b64_ulaw: str):
             nonlocal first_audio
+            
+            # Stop if barge-in happened
+            if self._cancelled:
+                return
+            
             if first_audio:
                 self.metrics.tts_first_audio()
                 first_audio = False

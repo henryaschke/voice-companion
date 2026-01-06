@@ -186,6 +186,18 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
                     await websocket.send_text(json.dumps(media_message))
                     # Track that we've sent audio - needed for barge-in timing
                     gateway._audio_sent_count += 1
+                    
+                    # CRITICAL: Calculate when this audio will finish playing on Twilio
+                    # μ-law audio: 8kHz sample rate, 1 byte per sample
+                    # base64 decodes to 3/4 of the original length
+                    import time
+                    audio_bytes = len(b64_ulaw) * 3 // 4
+                    audio_duration_sec = audio_bytes / 8000  # 8kHz sample rate
+                    expected_end = time.time() + audio_duration_sec + 0.5  # Add 500ms buffer for network latency
+                    
+                    # Update if this audio will play longer than current estimate
+                    if expected_end > gateway._audio_playing_until:
+                        gateway._audio_playing_until = expected_end
                 except Exception as e:
                     print(f"[{actual_call_sid}] Error sending audio: {e}")
         

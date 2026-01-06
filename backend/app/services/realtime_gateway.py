@@ -107,6 +107,11 @@ class RealtimeGateway:
         # If the turn ID doesn't match, audio is dropped.
         self._current_turn_id = 0
         
+        # CRITICAL: Track when audio is expected to finish playing on Twilio
+        # State changes to LISTENING when TTS is done, but Twilio still plays audio!
+        # We need to keep barge-in detection active until audio finishes playing.
+        self._audio_playing_until = 0.0  # Unix timestamp when audio should be done
+        
         # Full conversation for post-processing
         self.full_conversation: list[dict] = []
     
@@ -194,13 +199,21 @@ class RealtimeGateway:
         # CRITICAL: Only allow barge-in AFTER we've actually sent some audio!
         # Otherwise the user's own voice (echo/tail from their last utterance)
         # triggers false positive barge-ins.
-        if self.state == GatewayState.SPEAKING and self._audio_sent_count >= self._min_audio_before_bargein:
+        # 
+        # ALSO: Check if audio is still playing on Twilio!
+        # The state may have changed to LISTENING, but Twilio is still playing audio.
+        # We need to detect barge-in until the audio finishes playing.
+        audio_still_playing = time.time() < self._audio_playing_until
+        can_bargein = (self.state == GatewayState.SPEAKING or audio_still_playing) and self._audio_sent_count >= self._min_audio_before_bargein
+        
+        if can_bargein:
             energy = self._calculate_audio_energy(pcm_bytes)
             if energy > self._vad_threshold:
                 self._consecutive_speech_frames += 1
                 # Require 3 consecutive frames of speech to avoid false positives
                 if self._consecutive_speech_frames >= 3:
-                    print(f"[{self.call_sid}] BARGE-IN via local VAD (energy={energy:.0f}, after {self._audio_sent_count} chunks) - stopping agent!")
+                    state_info = f"state={self.state.value}, audio_playing={audio_still_playing}"
+                    print(f"[{self.call_sid}] BARGE-IN via local VAD (energy={energy:.0f}, {state_info}, chunks={self._audio_sent_count}) - stopping agent!")
                     self.metrics.record_barge_in()
                     await self._handle_barge_in()
                     self._consecutive_speech_frames = 0
@@ -252,12 +265,16 @@ class RealtimeGateway:
         Used for fast barge-in detection.
         """
         current_state = self.state
+        audio_still_playing = time.time() < self._audio_playing_until
         
-        # Barge-in: user started speaking while agent is speaking
+        # Barge-in: user started speaking while agent is speaking OR audio still playing
         # CRITICAL: Only allow barge-in AFTER we've actually sent some audio!
         # Otherwise user's echo triggers false positives
-        if current_state == GatewayState.SPEAKING and self._audio_sent_count >= self._min_audio_before_bargein:
-            print(f"[{self.call_sid}] BARGE-IN via SpeechStarted (after {self._audio_sent_count} chunks) - stopping agent NOW!")
+        can_bargein = (current_state == GatewayState.SPEAKING or audio_still_playing) and self._audio_sent_count >= self._min_audio_before_bargein
+        
+        if can_bargein:
+            state_info = f"state={current_state.value}, audio_playing={audio_still_playing}"
+            print(f"[{self.call_sid}] BARGE-IN via SpeechStarted ({state_info}, chunks={self._audio_sent_count}) - stopping agent NOW!")
             self.metrics.record_barge_in()
             await self._handle_barge_in()
     
@@ -269,11 +286,14 @@ class RealtimeGateway:
             event: Transcript event with text and metadata
         """
         current_state = self.state
+        audio_still_playing = time.time() < self._audio_playing_until
         
         # Note: Barge-in is now handled by _on_speech_started (faster)
         # But keep this as backup for transcript-based detection
         # CRITICAL: Only allow barge-in AFTER we've actually sent some audio!
-        if current_state == GatewayState.SPEAKING and event.text and self._audio_sent_count >= self._min_audio_before_bargein:
+        can_bargein = (current_state == GatewayState.SPEAKING or audio_still_playing) and self._audio_sent_count >= self._min_audio_before_bargein
+        
+        if can_bargein and event.text:
             print(f"[{self.call_sid}] BARGE-IN (transcript backup, after {self._audio_sent_count} chunks): '{event.text[:50]}...'")
             self.metrics.record_barge_in()
             self._barge_in_text = event.text
@@ -340,6 +360,7 @@ class RealtimeGateway:
         self._cancelled = False
         self._audio_sent_count = 0  # Reset audio counter for barge-in timing
         self._consecutive_speech_frames = 0  # Reset VAD frames
+        self._audio_playing_until = 0.0  # Reset audio end time
         
         user_text = self._current_utterance
         self._current_utterance = ""
@@ -564,6 +585,9 @@ class RealtimeGateway:
         
         # Set cancelled flag to stop any ongoing callbacks
         self._cancelled = True
+        
+        # Reset audio playing time since we're clearing the buffer
+        self._audio_playing_until = 0.0
         
         # CRITICAL: Clear Twilio's audio buffer FIRST
         # This stops the already-buffered audio from playing

@@ -149,12 +149,19 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
     try:
         # Callback to send audio to Twilio
         async def send_audio_to_twilio(b64_ulaw: str):
-            """Send audio chunk to Twilio."""
-            # CRITICAL: Block ALL audio after barge-in!
-            # This is the LAST LINE OF DEFENSE - if _cancelled is True,
-            # absolutely NO audio should be sent to Twilio anymore.
-            if gateway and gateway._cancelled:
-                return  # Silently drop audio - barge-in is active
+            """
+            Send audio chunk to Twilio.
+            
+            CRITICAL: This is the LAST LINE OF DEFENSE for barge-in.
+            The turn ID check happens in the gateway's on_tts_audio callback.
+            Here we just check _cancelled as a final safeguard.
+            """
+            if not gateway:
+                return
+            
+            # CRITICAL: Block ALL audio if barge-in is active
+            if gateway._cancelled:
+                return  # Silently drop - barge-in active
             
             if stream_sid and b64_ulaw:
                 media_message = {
@@ -167,8 +174,7 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
                 try:
                     await websocket.send_text(json.dumps(media_message))
                     # Track that we've sent audio - needed for barge-in timing
-                    if gateway:
-                        gateway._audio_sent_count += 1
+                    gateway._audio_sent_count += 1
                 except Exception as e:
                     print(f"[{actual_call_sid}] Error sending audio: {e}")
         

@@ -102,6 +102,11 @@ class RealtimeGateway:
         self._audio_sent_count = 0  # Number of audio chunks sent in current turn
         self._min_audio_before_bargein = 3  # Require at least 3 chunks (~300ms) before allowing barge-in
         
+        # CRITICAL: Turn ID for race condition prevention
+        # Each turn gets a unique ID. Audio chunks are tagged with this ID.
+        # If the turn ID doesn't match, audio is dropped.
+        self._current_turn_id = 0
+        
         # Full conversation for post-processing
         self.full_conversation: list[dict] = []
     
@@ -325,6 +330,12 @@ class RealtimeGateway:
         if not self._current_utterance:
             return
         
+        # CRITICAL: Increment turn ID FIRST - this invalidates any old audio
+        self._current_turn_id += 1
+        my_turn_id = self._current_turn_id
+        
+        print(f"[{self.call_sid}] TURN {my_turn_id} STARTED")
+        
         # Reset flags for new turn
         self._cancelled = False
         self._audio_sent_count = 0  # Reset audio counter for barge-in timing
@@ -348,9 +359,10 @@ class RealtimeGateway:
         async def on_sentence(sentence: str):
             nonlocal response_text, first_sentence
             
-            # CHECK: Stop if barge-in happened
-            if self._cancelled:
-                print(f"[{self.call_sid}] Skipping sentence due to barge-in: '{sentence[:30]}...'")
+            # CRITICAL: Check BOTH cancelled flag AND turn ID
+            # Turn ID prevents race condition where new turn resets _cancelled
+            if self._cancelled or self._current_turn_id != my_turn_id:
+                print(f"[{self.call_sid}] TURN {my_turn_id} STALE - skipping sentence (current={self._current_turn_id}, cancelled={self._cancelled})")
                 return
             
             response_text += sentence + " "
@@ -368,8 +380,8 @@ class RealtimeGateway:
             async def on_tts_audio(b64_ulaw: str):
                 nonlocal first_audio
                 
-                # CRITICAL: Stop sending audio if barge-in happened!
-                if self._cancelled:
+                # CRITICAL: Check BOTH cancelled flag AND turn ID
+                if self._cancelled or self._current_turn_id != my_turn_id:
                     return
                 
                 if first_audio:
@@ -427,7 +439,10 @@ class RealtimeGateway:
             tool_call: The tool call request
             on_sentence: Callback for streaming sentences to TTS
         """
-        print(f"[{self.call_sid}] Handling tool call: {tool_call.tool_name}")
+        # Capture turn ID for this tool call
+        my_turn_id = self._current_turn_id
+        
+        print(f"[{self.call_sid}] Handling tool call: {tool_call.tool_name} (turn {my_turn_id})")
         
         # 1. Say a "fetching" phrase so user knows we're working on it
         fetching_phrase = get_fetching_phrase()
@@ -439,8 +454,8 @@ class RealtimeGateway:
         async def on_fetching_audio(b64_ulaw: str):
             nonlocal first_audio
             
-            # Stop if barge-in happened
-            if self._cancelled:
+            # Stop if barge-in happened or turn changed
+            if self._cancelled or self._current_turn_id != my_turn_id:
                 return
             
             if first_audio:
@@ -465,8 +480,9 @@ class RealtimeGateway:
         
         print(f"[{self.call_sid}] Tool result received ({len(tool_result)} chars)")
         
-        # Check if cancelled during tool execution
-        if self._cancelled:
+        # Check if cancelled during tool execution or turn changed
+        if self._cancelled or self._current_turn_id != my_turn_id:
+            print(f"[{self.call_sid}] Tool call aborted - turn changed or cancelled")
             return
         
         # 3. Call LLM again with tool result
@@ -490,14 +506,17 @@ class RealtimeGateway:
         if not self.tts:
             return
         
+        # Capture turn ID for this speech
+        my_turn_id = self._current_turn_id
+        
         self.metrics.tts_start()
         first_audio = True
         
         async def on_audio(b64_ulaw: str):
             nonlocal first_audio
             
-            # Stop if barge-in happened
-            if self._cancelled:
+            # Stop if barge-in happened or turn changed
+            if self._cancelled or self._current_turn_id != my_turn_id:
                 return
             
             if first_audio:
@@ -515,9 +534,14 @@ class RealtimeGateway:
     
     async def _handle_barge_in(self):
         """Handle user interruption (barge-in)."""
-        print(f"[{self.call_sid}] Handling barge-in - stopping agent...")
+        old_turn_id = self._current_turn_id
         
-        # Set cancelled flag to stop any ongoing tool calls
+        # CRITICAL: Increment turn ID FIRST - this immediately invalidates all old audio
+        self._current_turn_id += 1
+        
+        print(f"[{self.call_sid}] BARGE-IN: Turn {old_turn_id} cancelled, now turn {self._current_turn_id}")
+        
+        # Set cancelled flag to stop any ongoing callbacks
         self._cancelled = True
         
         # CRITICAL: Clear Twilio's audio buffer FIRST

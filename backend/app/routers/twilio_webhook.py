@@ -193,11 +193,18 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
                     import time
                     audio_bytes = len(b64_ulaw) * 3 // 4
                     audio_duration_sec = audio_bytes / 8000  # 8kHz sample rate
-                    expected_end = time.time() + audio_duration_sec + 0.5  # Add 500ms buffer for network latency
                     
-                    # Update if this audio will play longer than current estimate
-                    if expected_end > gateway._audio_playing_until:
-                        gateway._audio_playing_until = expected_end
+                    # CRITICAL FIX: Audio chunks are QUEUED on Twilio, not overlapping!
+                    # Each chunk plays AFTER the previous one finishes.
+                    # So we must ADD the duration, not just take the max!
+                    now = time.time()
+                    
+                    if gateway._audio_playing_until < now:
+                        # No audio in buffer, start from now
+                        gateway._audio_playing_until = now + audio_duration_sec + 0.3
+                    else:
+                        # Audio already in buffer, add this chunk's duration to the end
+                        gateway._audio_playing_until += audio_duration_sec
                 except Exception as e:
                     print(f"[{actual_call_sid}] Error sending audio: {e}")
         

@@ -52,11 +52,65 @@ class ElevenLabsTTS:
         self.total_chars = 0
         self.total_chunks = 0
     
+    # German number words for TTS
+    GERMAN_NUMBERS = {
+        '0': 'null', '1': 'eins', '2': 'zwei', '3': 'drei', '4': 'vier',
+        '5': 'fünf', '6': 'sechs', '7': 'sieben', '8': 'acht', '9': 'neun',
+        '10': 'zehn', '11': 'elf', '12': 'zwölf', '13': 'dreizehn', '14': 'vierzehn',
+        '15': 'fünfzehn', '16': 'sechzehn', '17': 'siebzehn', '18': 'achtzehn', '19': 'neunzehn',
+        '20': 'zwanzig', '30': 'dreißig', '40': 'vierzig', '50': 'fünfzig',
+        '60': 'sechzig', '70': 'siebzig', '80': 'achtzig', '90': 'neunzig',
+        '100': 'hundert', '1000': 'tausend'
+    }
+    
+    def _convert_numbers_to_german(self, text: str) -> str:
+        """
+        Convert standalone numbers to German words.
+        
+        Prevents ElevenLabs from pronouncing "1" as "one" instead of "eins".
+        Only converts standalone numbers, not numbers in the middle of words.
+        
+        Args:
+            text: Text with potential numbers
+            
+        Returns:
+            Text with numbers replaced by German words
+        """
+        # Replace standalone numbers with German words
+        # Use word boundaries to avoid replacing numbers in the middle of text
+        def replace_number(match):
+            num = match.group(0)
+            if num in self.GERMAN_NUMBERS:
+                return self.GERMAN_NUMBERS[num]
+            # For larger numbers, try to construct them
+            try:
+                n = int(num)
+                if n <= 0:
+                    return num
+                if n < 100:
+                    # Handle 21-99
+                    tens = (n // 10) * 10
+                    ones = n % 10
+                    if ones == 0:
+                        return self.GERMAN_NUMBERS.get(str(tens), num)
+                    else:
+                        # German: "einundzwanzig" (one-and-twenty)
+                        ones_word = self.GERMAN_NUMBERS.get(str(ones), str(ones))
+                        tens_word = self.GERMAN_NUMBERS.get(str(tens), str(tens))
+                        return f"{ones_word}und{tens_word}"
+                return num  # Keep larger numbers as-is
+            except ValueError:
+                return num
+        
+        # Match standalone numbers (not part of a word)
+        return re.sub(r'\b(\d+)\b', replace_number, text)
+    
     def _preprocess_text_for_lea(self, text: str) -> str:
         """
         Preprocess text for natural German speech with voice Lea.
         
         Lea-specific optimizations:
+        - Convert numbers to German words (prevents English pronunciation)
         - Short sentences (max ~20 words) prevent melodic over-smoothing
         - Strategic comma placement for natural breathing pauses
         - Split long compound sentences on conjunctions
@@ -72,6 +126,9 @@ class ElevenLabsTTS:
             return ""
         
         text = text.strip()
+        
+        # Convert numbers to German words FIRST (before removing chars)
+        text = self._convert_numbers_to_german(text)
         
         # Remove any stage directions or emojis that might have slipped through
         text = re.sub(r'\[.*?\]', '', text)  # Remove [brackets]
@@ -201,6 +258,9 @@ class ElevenLabsTTS:
         payload = {
             "text": processed_text,
             "model_id": model_id,
+            # CRITICAL: Force German pronunciation for everything
+            # Without this, names like "Henry" are pronounced in English
+            "language_code": "de",
             "voice_settings": {
                 "stability": 0.40,
                 "similarity_boost": 0.75,

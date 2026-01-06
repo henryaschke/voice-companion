@@ -227,6 +227,47 @@ class RealtimeGateway:
         # Track speech timing
         self._last_speech_time = time.time()
     
+    def _remove_overlap(self, existing: str, new_text: str) -> str:
+        """
+        Remove overlapping words between existing text and new text.
+        
+        Deepgram sometimes sends overlapping final transcripts, e.g.:
+        - existing: "Das kenn ich doch schon alles das"
+        - new_text: "das basilikum"
+        - result: "basilikum" (removes duplicate "das")
+        
+        Returns the new_text with any overlapping prefix removed.
+        """
+        if not existing or not new_text:
+            return new_text
+        
+        # Get last few words of existing text (check up to 3 words overlap)
+        existing_words = existing.lower().split()
+        new_words = new_text.split()
+        new_words_lower = [w.lower() for w in new_words]
+        
+        if not existing_words or not new_words:
+            return new_text
+        
+        # Check for overlap: does new_text start with words that end existing?
+        # Check 1, 2, or 3 word overlaps
+        for overlap_len in range(min(3, len(new_words)), 0, -1):
+            if len(existing_words) >= overlap_len:
+                # Get last N words of existing
+                existing_tail = existing_words[-overlap_len:]
+                # Get first N words of new
+                new_head = new_words_lower[:overlap_len]
+                
+                if existing_tail == new_head:
+                    # Found overlap! Remove the overlapping words from new_text
+                    remaining = new_words[overlap_len:]
+                    if remaining:
+                        return " ".join(remaining)
+                    else:
+                        return ""  # Entire new_text was duplicate
+        
+        return new_text
+    
     def _calculate_audio_energy(self, pcm_bytes: bytes) -> float:
         """
         Calculate RMS energy of PCM audio for VAD.
@@ -313,8 +354,11 @@ class RealtimeGateway:
             # Accumulate transcript - APPEND final transcripts, don't replace!
             if event.is_final:
                 if self._current_utterance:
-                    # Append with space
-                    self._current_utterance += " " + event.text
+                    # Check for overlapping words at the boundary
+                    # Deepgram sometimes sends overlapping transcripts
+                    new_text = self._remove_overlap(self._current_utterance, event.text)
+                    if new_text:
+                        self._current_utterance += " " + new_text
                 else:
                     self._current_utterance = event.text
                 print(f"[{self.call_sid}] STT accumulated: '{self._current_utterance}'")

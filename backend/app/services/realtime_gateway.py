@@ -22,9 +22,10 @@ from typing import Optional, Callable, Awaitable
 from app.config import settings
 from app.services.audio_utils import base64_ulaw_to_pcm
 from app.services.deepgram_stt import DeepgramSTT, TranscriptEvent
-from app.services.openai_llm import OpenAILLM, ConversationTurn
+from app.services.openai_llm import OpenAILLM, ConversationTurn, ToolCallRequest
 from app.services.elevenlabs_tts import ElevenLabsTTS
 from app.services.metrics import CallMetrics
+from app.services.external_tools import get_fetching_phrase
 
 
 class GatewayState(Enum):
@@ -322,7 +323,7 @@ class RealtimeGateway:
         await self._set_state(GatewayState.THINKING)
         self.metrics.llm_start()
         
-        # Generate response
+        # Generate response (may be text or tool call request)
         response_text = ""
         first_sentence = True
         
@@ -353,9 +354,16 @@ class RealtimeGateway:
             await self.tts.synthesize_to_ulaw(sentence, on_tts_audio)
         
         try:
-            await self.llm.generate_streaming(user_text, on_sentence)
-            self.metrics.llm_complete()
-            self.metrics.tts_complete()
+            # First LLM call - may return text or tool call request
+            result = await self.llm.generate_streaming(user_text, on_sentence)
+            
+            # Check if this is a tool call request
+            if isinstance(result, ToolCallRequest):
+                await self._handle_tool_call(user_text, result, on_sentence)
+            else:
+                self.metrics.llm_complete()
+                self.metrics.tts_complete()
+                
         except Exception as e:
             print(f"[{self.call_sid}] Response generation error: {e}")
         
@@ -369,6 +377,74 @@ class RealtimeGateway:
         
         # Start new turn timing
         self.metrics.start_turn()
+    
+    async def _handle_tool_call(
+        self,
+        user_text: str,
+        tool_call: ToolCallRequest,
+        on_sentence
+    ):
+        """
+        Handle a tool call request from the LLM.
+        
+        Flow:
+        1. Say "Lass mich das kurz herausfinden..."
+        2. Execute the tool
+        3. Call LLM again with tool result
+        4. Stream the final response
+        
+        Args:
+            user_text: Original user text
+            tool_call: The tool call request
+            on_sentence: Callback for streaming sentences to TTS
+        """
+        print(f"[{self.call_sid}] Handling tool call: {tool_call.tool_name}")
+        
+        # 1. Say a "fetching" phrase so user knows we're working on it
+        fetching_phrase = get_fetching_phrase()
+        await self._set_state(GatewayState.SPEAKING)
+        self.metrics.tts_start()
+        
+        first_audio = True
+        
+        async def on_fetching_audio(b64_ulaw: str):
+            nonlocal first_audio
+            if first_audio:
+                self.metrics.tts_first_audio()
+                first_audio = False
+            
+            if self.on_audio_out:
+                await self.on_audio_out(b64_ulaw)
+        
+        await self.tts.synthesize_to_ulaw(fetching_phrase, on_fetching_audio)
+        
+        # Add fetching phrase to conversation
+        self.full_conversation.append({"role": "assistant", "content": fetching_phrase})
+        
+        print(f"[{self.call_sid}] Spoke fetching phrase: '{fetching_phrase}'")
+        
+        # 2. Execute the tool (while still in SPEAKING state to prevent barge-in during fetch)
+        tool_result = await self.llm.tools.execute_tool(
+            tool_call.tool_name,
+            tool_call.arguments
+        )
+        
+        print(f"[{self.call_sid}] Tool result received ({len(tool_result)} chars)")
+        
+        # Check if cancelled during tool execution
+        if self._cancelled:
+            return
+        
+        # 3. Call LLM again with tool result
+        await self.llm.generate_with_tool_result(
+            user_text,
+            tool_call,
+            tool_result,
+            on_sentence
+        )
+        
+        self.metrics.llm_complete()
+        self.metrics.tts_complete()
     
     async def _speak(self, text: str):
         """
@@ -471,6 +547,10 @@ class RealtimeGateway:
         # Close TTS session
         if self.tts:
             await self.tts.close()
+        
+        # Close external tools (aiohttp session)
+        if self.llm and self.llm.tools:
+            await self.llm.tools.close()
         
         # Log metrics
         summary = self.metrics.get_summary()

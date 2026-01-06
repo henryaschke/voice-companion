@@ -6,6 +6,7 @@ Provides streaming text generation with:
 - Memory context integration (short buffer + long-term memory)
 - Sentence chunking for TTS
 - German language optimization
+- Function Calling for external data (news, weather, etc.)
 
 Context Structure:
 - System prompt (agent personality)
@@ -15,16 +16,34 @@ Context Structure:
 """
 import asyncio
 import re
+import json
 from typing import Optional, Callable, Awaitable, AsyncGenerator
 from dataclasses import dataclass, field
 from openai import AsyncOpenAI
 
 from app.config import settings
+from app.services.external_tools import ExternalTools
 
 
 # System prompt for German elderly companion
 SYSTEM_PROMPT = """Du bist VIOLA, eine deutschsprachige, sprachbasierte digitale Begleiterin.
 Du sprichst wie eine echte Freundin am Telefon - warm, interessiert, natürlich.
+
+═══════════════════════════════════════════════════════════════════
+WERKZEUGE & ECHTZEIT-INFORMATIONEN
+═══════════════════════════════════════════════════════════════════
+
+Du hast Zugriff auf aktuelle Nachrichten von tagesschau.de!
+
+NUTZE das get_news Tool wenn der Nutzer fragt nach:
+- "Was gibt es Neues?"
+- "Was ist in der Welt passiert?"
+- "Gibt es wichtige Nachrichten?"
+- "Was ist heute so los?"
+- Irgendwas über aktuelle Ereignisse, Politik, Wirtschaft, Sport
+
+Wenn du Nachrichten abrufst, fasse sie KURZ zusammen (1-2 Sätze pro Nachricht).
+Frag danach, ob der Nutzer mehr zu einem Thema wissen möchte.
 
 ═══════════════════════════════════════════════════════════════════
 GESPRÄCH AM LEBEN HALTEN (HÖCHSTE PRIORITÄT!)
@@ -105,6 +124,14 @@ class LLMContext:
     max_buffer_turns: int = 10  # Keep last 5 exchanges (10 turns) for better context
 
 
+@dataclass
+class ToolCallRequest:
+    """Represents a tool call request from the LLM."""
+    tool_name: str
+    arguments: dict
+    tool_call_id: str
+
+
 class OpenAILLM:
     """
     Streaming LLM client using OpenAI GPT-4o.
@@ -113,6 +140,7 @@ class OpenAILLM:
     - Token streaming for low latency
     - Sentence chunking for TTS pipeline
     - Memory context injection
+    - Function Calling for external data
     - Cancellation support
     """
     
@@ -126,6 +154,9 @@ class OpenAILLM:
         self.call_sid = call_sid
         self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY) if settings.OPENAI_API_KEY else None
         self.context = LLMContext()
+        
+        # External tools for function calling
+        self.tools = ExternalTools(call_sid=call_sid)
         
         # Cancellation
         self._current_task: Optional[asyncio.Task] = None
@@ -222,13 +253,138 @@ class OpenAILLM:
     async def generate_streaming(
         self,
         user_text: str,
-        on_sentence: Optional[Callable[[str], Awaitable[None]]] = None
-    ) -> str:
+        on_sentence: Optional[Callable[[str], Awaitable[None]]] = None,
+        enable_tools: bool = True
+    ) -> str | ToolCallRequest:
         """
         Generate response with streaming, chunked by sentences.
         
+        Supports Function Calling - if the LLM wants to call a tool,
+        returns a ToolCallRequest instead of a string.
+        
         Args:
             user_text: User's transcribed speech
+            on_sentence: Callback for each complete sentence (for TTS)
+            enable_tools: Whether to enable function calling
+            
+        Returns:
+            Complete response text OR ToolCallRequest if tool needed
+        """
+        if not self.client:
+            print(f"[{self.call_sid}] OpenAI not configured")
+            return ""
+        
+        self._cancelled = False
+        messages = self._build_messages(user_text)
+        
+        try:
+            self.total_requests += 1
+            
+            # Build request params
+            request_params = {
+                "model": settings.OPENAI_MODEL,
+                "messages": messages,
+                "temperature": 0.6,
+                "max_tokens": 150,  # Keep responses short
+                "stream": True
+            }
+            
+            # Add tools if enabled
+            if enable_tools:
+                request_params["tools"] = ExternalTools.TOOL_DEFINITIONS
+                request_params["tool_choice"] = "auto"
+            
+            stream = await self.client.chat.completions.create(**request_params)
+            
+            full_response = ""
+            sentence_buffer = ""
+            
+            # Track tool calls (may be streamed in chunks)
+            tool_call_id = ""
+            tool_name = ""
+            tool_args_str = ""
+            is_tool_call = False
+            
+            async for chunk in stream:
+                if self._cancelled:
+                    print(f"[{self.call_sid}] LLM generation cancelled")
+                    break
+                
+                delta = chunk.choices[0].delta
+                
+                # Check for tool calls
+                if delta.tool_calls:
+                    is_tool_call = True
+                    tool_call = delta.tool_calls[0]
+                    
+                    if tool_call.id:
+                        tool_call_id = tool_call.id
+                    if tool_call.function:
+                        if tool_call.function.name:
+                            tool_name = tool_call.function.name
+                        if tool_call.function.arguments:
+                            tool_args_str += tool_call.function.arguments
+                
+                # Regular text content
+                elif delta.content:
+                    token = delta.content
+                    full_response += token
+                    sentence_buffer += token
+                    self.total_tokens += 1
+                    
+                    # Check for sentence boundaries
+                    sentences = self._extract_sentences(sentence_buffer)
+                    
+                    if sentences["complete"]:
+                        for sentence in sentences["complete"]:
+                            if on_sentence and not self._cancelled:
+                                await on_sentence(sentence)
+                        
+                        sentence_buffer = sentences["incomplete"]
+            
+            # If this was a tool call, return the request
+            if is_tool_call and tool_name:
+                try:
+                    tool_args = json.loads(tool_args_str) if tool_args_str else {}
+                except json.JSONDecodeError:
+                    tool_args = {}
+                
+                print(f"[{self.call_sid}] Tool call requested: {tool_name}({tool_args})")
+                return ToolCallRequest(
+                    tool_name=tool_name,
+                    arguments=tool_args,
+                    tool_call_id=tool_call_id
+                )
+            
+            # Send any remaining text
+            if sentence_buffer.strip() and on_sentence and not self._cancelled:
+                await on_sentence(sentence_buffer.strip())
+            
+            # Add assistant response to buffer
+            if full_response:
+                self.add_turn("assistant", full_response)
+            
+            print(f"[{self.call_sid}] LLM response: {full_response[:100]}...")
+            return full_response
+            
+        except Exception as e:
+            print(f"[{self.call_sid}] LLM error: {e}")
+            return ""
+    
+    async def generate_with_tool_result(
+        self,
+        user_text: str,
+        tool_call: ToolCallRequest,
+        tool_result: str,
+        on_sentence: Optional[Callable[[str], Awaitable[None]]] = None
+    ) -> str:
+        """
+        Continue generation after a tool call was executed.
+        
+        Args:
+            user_text: Original user text
+            tool_call: The tool call that was made
+            tool_result: Result from executing the tool
             on_sentence: Callback for each complete sentence (for TTS)
             
         Returns:
@@ -241,6 +397,29 @@ class OpenAILLM:
         self._cancelled = False
         messages = self._build_messages(user_text)
         
+        # Add the assistant's tool call
+        messages.append({
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{
+                "id": tool_call.tool_call_id,
+                "type": "function",
+                "function": {
+                    "name": tool_call.tool_name,
+                    "arguments": json.dumps(tool_call.arguments)
+                }
+            }]
+        })
+        
+        # Add the tool result
+        messages.append({
+            "role": "tool",
+            "tool_call_id": tool_call.tool_call_id,
+            "content": tool_result
+        })
+        
+        print(f"[{self.call_sid}] Generating response with tool result ({len(tool_result)} chars)")
+        
         try:
             self.total_requests += 1
             
@@ -248,7 +427,7 @@ class OpenAILLM:
                 model=settings.OPENAI_MODEL,
                 messages=messages,
                 temperature=0.6,
-                max_tokens=150,  # Keep responses short
+                max_tokens=250,  # Allow more tokens for news summaries
                 stream=True
             )
             
@@ -285,11 +464,11 @@ class OpenAILLM:
             if full_response:
                 self.add_turn("assistant", full_response)
             
-            print(f"[{self.call_sid}] LLM response: {full_response[:100]}...")
+            print(f"[{self.call_sid}] LLM response (with tool): {full_response[:100]}...")
             return full_response
             
         except Exception as e:
-            print(f"[{self.call_sid}] LLM error: {e}")
+            print(f"[{self.call_sid}] LLM error (with tool): {e}")
             return ""
     
     def _extract_sentences(self, text: str) -> dict:

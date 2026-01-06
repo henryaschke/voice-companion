@@ -18,10 +18,9 @@ import asyncio
 import time
 from enum import Enum
 from typing import Optional, Callable, Awaitable
-from dataclasses import dataclass, field
 
 from app.config import settings
-from app.services.audio_utils import base64_ulaw_to_pcm, pcm_to_base64_ulaw
+from app.services.audio_utils import base64_ulaw_to_pcm
 from app.services.deepgram_stt import DeepgramSTT, TranscriptEvent
 from app.services.openai_llm import OpenAILLM, ConversationTurn
 from app.services.elevenlabs_tts import ElevenLabsTTS
@@ -34,28 +33,6 @@ class GatewayState(Enum):
     LISTENING = "listening"
     THINKING = "thinking"
     SPEAKING = "speaking"
-
-
-# TURN-TAKING STRATEGY:
-# - Deepgram's utterance_end_ms=1800 handles most turn-taking (1.8s silence = done)
-# - We only filter out single filler words (und, aber, also, ja, etc.)
-# - No complex grammar parsing - that caused false positives
-# 
-# Why 1.8 seconds?
-# - Elderly users need more time to gather thoughts
-# - German compound sentences have natural mid-sentence pauses
-# - 1.0s was too aggressive (cut off "Und..." while thinking)
-# - 2.0s+ feels too slow/laggy
-
-
-@dataclass
-class GatewayConfig:
-    """Configuration for the gateway."""
-    end_of_turn_silence_ms: int = 750
-    grace_ms: int = 200
-    min_utterance_ms: int = 600
-    max_utterance_ms: int = 15000
-    barge_in_threshold_ms: int = 150
 
 
 class RealtimeGateway:
@@ -94,15 +71,6 @@ class RealtimeGateway:
         self.on_audio_out = on_audio_out
         self.on_clear_audio = on_clear_audio  # Callback to clear Twilio's audio buffer
         
-        # Configuration
-        self.config = GatewayConfig(
-            end_of_turn_silence_ms=settings.END_OF_TURN_SILENCE_MS,
-            grace_ms=settings.GRACE_MS,
-            min_utterance_ms=settings.MIN_UTTERANCE_MS,
-            max_utterance_ms=settings.MAX_UTTERANCE_MS,
-            barge_in_threshold_ms=settings.BARGE_IN_THRESHOLD_MS
-        )
-        
         # State
         self.state = GatewayState.IDLE
         self._state_lock = asyncio.Lock()
@@ -122,7 +90,6 @@ class RealtimeGateway:
         self._pending_response_task: Optional[asyncio.Task] = None
         
         # Barge-in detection via local VAD (Voice Activity Detection)
-        self._speech_during_speaking = False
         self._barge_in_text = ""  # Text captured during barge-in
         self._vad_threshold = 500  # RMS energy threshold for speech detection
         self._consecutive_speech_frames = 0  # Require multiple frames to avoid false positives

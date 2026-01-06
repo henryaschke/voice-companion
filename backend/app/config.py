@@ -37,13 +37,6 @@ class Settings(BaseSettings):
     # Application
     BASE_URL: str = "http://localhost:8000"
     
-    # Voice Agent Tuning Parameters
-    END_OF_TURN_SILENCE_MS: int = 750   # Silence before considering turn complete
-    GRACE_MS: int = 200                  # Extra grace period after silence
-    MIN_UTTERANCE_MS: int = 600          # Minimum utterance length
-    MAX_UTTERANCE_MS: int = 15000        # Maximum utterance length
-    BARGE_IN_THRESHOLD_MS: int = 150     # How fast to detect barge-in
-    
     # GDPR Settings
     DEFAULT_RETENTION_DAYS: int = 30
     ENABLE_TRANSCRIPT_STORAGE: bool = True

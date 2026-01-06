@@ -323,12 +323,4 @@ class OpenAILLM:
     def cancel(self):
         """Cancel current generation."""
         self._cancelled = True
-    
-    def get_full_conversation(self) -> str:
-        """Get the full conversation as text for post-processing."""
-        lines = []
-        for turn in self.context.short_buffer:
-            role = "Anrufer" if turn.role == "user" else "Begleiter"
-            lines.append(f"{role}: {turn.content}")
-        return "\n".join(lines)
 

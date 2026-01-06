@@ -15,18 +15,9 @@ Best Practices Applied:
 import asyncio
 import aiohttp
 import re
-from typing import Optional, Callable, Awaitable, AsyncGenerator
-from dataclasses import dataclass
+from typing import Optional, Callable, Awaitable
 
 from app.config import settings
-from app.services.audio_utils import resample_16k_to_8k
-
-
-@dataclass
-class TTSChunk:
-    """A chunk of TTS audio."""
-    audio_pcm: bytes  # PCM 16-bit at 8kHz (ready for Twilio conversion)
-    is_final: bool
 
 
 class ElevenLabsTTS:
@@ -253,32 +244,6 @@ class ElevenLabsTTS:
         except Exception as e:
             print(f"[{self.call_sid}] TTS error: {e}")
             return b""
-    
-    def _downsample_24k_to_8k(self, pcm_24k: bytes) -> bytes:
-        """
-        Downsample from 24kHz to 8kHz.
-        
-        Takes every 3rd sample (24000/8000 = 3).
-        
-        Args:
-            pcm_24k: PCM 16-bit at 24000 Hz
-            
-        Returns:
-            PCM 16-bit at 8000 Hz
-        """
-        import struct
-        
-        # Ensure we have complete samples (2 bytes each)
-        if len(pcm_24k) % 2 != 0:
-            pcm_24k = pcm_24k[:-1]
-        
-        num_samples = len(pcm_24k) // 2
-        samples_24k = struct.unpack(f'<{num_samples}h', pcm_24k)
-        
-        # Take every 3rd sample
-        samples_8k = samples_24k[::3]
-        
-        return struct.pack(f'<{len(samples_8k)}h', *samples_8k)
     
     async def synthesize_to_ulaw(
         self,

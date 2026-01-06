@@ -94,6 +94,7 @@ class RealtimeGateway:
         self._barge_in_text = ""  # Text captured during barge-in
         self._vad_threshold = 500  # RMS energy threshold for speech detection
         self._consecutive_speech_frames = 0  # Require multiple frames to avoid false positives
+        self._cancelled = False  # Flag for cancellation during tool calls
         
         # Full conversation for post-processing
         self.full_conversation: list[dict] = []
@@ -312,6 +313,9 @@ class RealtimeGateway:
         if not self._current_utterance:
             return
         
+        # Reset cancellation flag for new turn
+        self._cancelled = False
+        
         user_text = self._current_utterance
         self._current_utterance = ""
         
@@ -477,6 +481,9 @@ class RealtimeGateway:
     async def _handle_barge_in(self):
         """Handle user interruption (barge-in)."""
         print(f"[{self.call_sid}] Handling barge-in - stopping agent...")
+        
+        # Set cancelled flag to stop any ongoing tool calls
+        self._cancelled = True
         
         # CRITICAL: Clear Twilio's audio buffer FIRST
         # This stops the already-buffered audio from playing

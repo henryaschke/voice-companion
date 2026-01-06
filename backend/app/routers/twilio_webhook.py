@@ -166,6 +166,9 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
                 }
                 try:
                     await websocket.send_text(json.dumps(media_message))
+                    # Track that we've sent audio - needed for barge-in timing
+                    if gateway:
+                        gateway._audio_sent_count += 1
                 except Exception as e:
                     print(f"[{actual_call_sid}] Error sending audio: {e}")
         

@@ -96,6 +96,12 @@ class RealtimeGateway:
         self._consecutive_speech_frames = 0  # Require multiple frames to avoid false positives
         self._cancelled = False  # Flag for cancellation during tool calls
         
+        # CRITICAL: Track when we actually started sending audio
+        # Barge-in should only be allowed AFTER we've sent some audio
+        # Otherwise user's own voice (echo/tail) triggers false positives
+        self._audio_sent_count = 0  # Number of audio chunks sent in current turn
+        self._min_audio_before_bargein = 3  # Require at least 3 chunks (~300ms) before allowing barge-in
+        
         # Full conversation for post-processing
         self.full_conversation: list[dict] = []
     
@@ -180,13 +186,16 @@ class RealtimeGateway:
         
         # LOCAL VAD: Check audio energy for barge-in detection
         # This is INSTANT - no waiting for Deepgram!
-        if self.state == GatewayState.SPEAKING:
+        # CRITICAL: Only allow barge-in AFTER we've actually sent some audio!
+        # Otherwise the user's own voice (echo/tail from their last utterance)
+        # triggers false positive barge-ins.
+        if self.state == GatewayState.SPEAKING and self._audio_sent_count >= self._min_audio_before_bargein:
             energy = self._calculate_audio_energy(pcm_bytes)
             if energy > self._vad_threshold:
                 self._consecutive_speech_frames += 1
                 # Require 3 consecutive frames of speech to avoid false positives
                 if self._consecutive_speech_frames >= 3:
-                    print(f"[{self.call_sid}] BARGE-IN via local VAD (energy={energy:.0f}) - stopping agent!")
+                    print(f"[{self.call_sid}] BARGE-IN via local VAD (energy={energy:.0f}, after {self._audio_sent_count} chunks) - stopping agent!")
                     self.metrics.record_barge_in()
                     await self._handle_barge_in()
                     self._consecutive_speech_frames = 0
@@ -240,8 +249,10 @@ class RealtimeGateway:
         current_state = self.state
         
         # Barge-in: user started speaking while agent is speaking
-        if current_state == GatewayState.SPEAKING:
-            print(f"[{self.call_sid}] BARGE-IN via SpeechStarted - stopping agent NOW!")
+        # CRITICAL: Only allow barge-in AFTER we've actually sent some audio!
+        # Otherwise user's echo triggers false positives
+        if current_state == GatewayState.SPEAKING and self._audio_sent_count >= self._min_audio_before_bargein:
+            print(f"[{self.call_sid}] BARGE-IN via SpeechStarted (after {self._audio_sent_count} chunks) - stopping agent NOW!")
             self.metrics.record_barge_in()
             await self._handle_barge_in()
     
@@ -256,8 +267,9 @@ class RealtimeGateway:
         
         # Note: Barge-in is now handled by _on_speech_started (faster)
         # But keep this as backup for transcript-based detection
-        if current_state == GatewayState.SPEAKING and event.text:
-            print(f"[{self.call_sid}] BARGE-IN (transcript backup): '{event.text[:50]}...'")
+        # CRITICAL: Only allow barge-in AFTER we've actually sent some audio!
+        if current_state == GatewayState.SPEAKING and event.text and self._audio_sent_count >= self._min_audio_before_bargein:
+            print(f"[{self.call_sid}] BARGE-IN (transcript backup, after {self._audio_sent_count} chunks): '{event.text[:50]}...'")
             self.metrics.record_barge_in()
             self._barge_in_text = event.text
             await self._handle_barge_in()
@@ -313,8 +325,10 @@ class RealtimeGateway:
         if not self._current_utterance:
             return
         
-        # Reset cancellation flag for new turn
+        # Reset flags for new turn
         self._cancelled = False
+        self._audio_sent_count = 0  # Reset audio counter for barge-in timing
+        self._consecutive_speech_frames = 0  # Reset VAD frames
         
         user_text = self._current_utterance
         self._current_utterance = ""

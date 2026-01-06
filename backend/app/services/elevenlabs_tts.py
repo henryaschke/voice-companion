@@ -46,6 +46,7 @@ class ElevenLabsTTS:
         self.call_sid = call_sid
         self._cancelled = False
         self._session: Optional[aiohttp.ClientSession] = None
+        self._current_response: Optional[aiohttp.ClientResponse] = None  # Track current response for cancellation
         
         # Metrics
         self.total_chars = 0
@@ -220,29 +221,41 @@ class ElevenLabsTTS:
             session = await self._get_session()
             
             async with session.post(url, headers=headers, json=payload, params=params) as response:
+                # Track response for cancellation
+                self._current_response = response
+                
                 if response.status != 200:
                     error_text = await response.text()
                     print(f"[{self.call_sid}] ElevenLabs error {response.status}: {error_text}")
+                    self._current_response = None
                     return b""
                 
                 # Stream audio chunks - already in μ-law 8kHz format!
                 async for chunk in response.content.iter_chunked(800):  # ~100ms of 8kHz μ-law
                     if self._cancelled:
-                        print(f"[{self.call_sid}] TTS cancelled")
+                        print(f"[{self.call_sid}] TTS cancelled mid-stream")
                         break
                     
                     if chunk:
                         all_audio += chunk
                         self.total_chunks += 1
                         
-                        if on_audio:
+                        if on_audio and not self._cancelled:
                             await on_audio(chunk)
+                
+                self._current_response = None
             
-            print(f"[{self.call_sid}] TTS complete: '{text[:50]}...' -> {len(all_audio)} bytes")
+            if not self._cancelled:
+                print(f"[{self.call_sid}] TTS complete: '{text[:50]}...' -> {len(all_audio)} bytes")
             return all_audio
             
+        except asyncio.CancelledError:
+            print(f"[{self.call_sid}] TTS task cancelled")
+            self._current_response = None
+            return b""
         except Exception as e:
             print(f"[{self.call_sid}] TTS error: {e}")
+            self._current_response = None
             return b""
     
     async def synthesize_to_ulaw(
@@ -278,8 +291,12 @@ class ElevenLabsTTS:
         return all_ulaw_b64
     
     def cancel(self):
-        """Cancel current synthesis."""
+        """Cancel current synthesis immediately."""
         self._cancelled = True
+        # Close the current response to stop receiving data
+        if self._current_response:
+            self._current_response.close()
+            print(f"[{self.call_sid}] TTS response closed for cancellation")
     
     async def close(self):
         """Close the HTTP session."""

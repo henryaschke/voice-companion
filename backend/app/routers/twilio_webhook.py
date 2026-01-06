@@ -150,6 +150,12 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
         # Callback to send audio to Twilio
         async def send_audio_to_twilio(b64_ulaw: str):
             """Send audio chunk to Twilio."""
+            # CRITICAL: Block ALL audio after barge-in!
+            # This is the LAST LINE OF DEFENSE - if _cancelled is True,
+            # absolutely NO audio should be sent to Twilio anymore.
+            if gateway and gateway._cancelled:
+                return  # Silently drop audio - barge-in is active
+            
             if stream_sid and b64_ulaw:
                 media_message = {
                     "event": "media",

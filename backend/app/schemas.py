@@ -23,6 +23,31 @@ class AccountResponse(AccountBase):
 
 
 # ============= Person Schemas =============
+
+# Nested schemas for structured JSON fields
+class PersonalContextInput(BaseModel):
+    """Personal context fields from frontend form."""
+    short_description: Optional[str] = None
+    interests: Optional[str] = None
+    important_people: Optional[str] = None
+    preferred_topics: Optional[str] = None
+    daily_routines: Optional[str] = None
+    sensitivities: Optional[str] = None
+    # Care home specific
+    diagnoses: Optional[str] = None
+    medications: Optional[str] = None
+    allergies: Optional[str] = None
+    mobility: Optional[str] = None
+    nutrition: Optional[str] = None
+
+
+class AddressInput(BaseModel):
+    """Address fields from frontend form."""
+    street_house_number: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
+
+
 class PersonBase(BaseModel):
     display_name: str
     phone_e164: str
@@ -33,7 +58,11 @@ class PersonBase(BaseModel):
 
 
 class PersonCreate(PersonBase):
+    """Extended create schema with new fields."""
     account_id: Optional[int] = None  # Will default to account 1 or 2 based on kind
+    age: Optional[int] = None
+    personal_context: Optional[PersonalContextInput] = None
+    address: Optional[AddressInput] = None
 
 
 class PersonUpdate(BaseModel):
@@ -42,12 +71,19 @@ class PersonUpdate(BaseModel):
     language: Optional[str] = None
     consent_recording: Optional[bool] = None
     retention_days: Optional[int] = None
+    age: Optional[int] = None
+    personal_context: Optional[PersonalContextInput] = None
+    address: Optional[AddressInput] = None
 
 
 class PersonResponse(PersonBase):
     id: int
     account_id: int
+    age: Optional[int] = None
+    personal_context_json: Optional[dict] = None
+    address_json: Optional[dict] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True
@@ -209,9 +245,4 @@ class SettingsResponse(BaseModel):
     twilio_numbers: List[TwilioNumberResponse] = []
     default_consent: bool = False
     default_retention_days: int = 30
-
-
-# ============= Outbound Call Schemas =============
-class OutboundCallRequest(BaseModel):
-    person_id: int
 

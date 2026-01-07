@@ -58,14 +58,20 @@ class Person(Base):
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), index=True)
     kind: Mapped[str] = mapped_column(String(20), default="senior")  # senior | patient
     display_name: Mapped[str] = mapped_column(String(255))
-    phone_e164: Mapped[str] = mapped_column(String(20), index=True)
+    phone_e164: Mapped[str] = mapped_column(String(20), unique=True, index=True)  # UNIQUE constraint
     language: Mapped[str] = mapped_column(String(10), default="de")
+    
+    # Extended profile fields (Phase 2)
+    age: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    personal_context_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # interests, description, etc.
+    address_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # street, city, plz
     
     # GDPR consent and retention
     consent_recording: Mapped[bool] = mapped_column(Boolean, default=False)
     retention_days: Mapped[int] = mapped_column(Integer, default=settings.DEFAULT_RETENTION_DAYS)
     
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, onupdate=datetime.utcnow)
     
     # Relationships
     account: Mapped["Account"] = relationship(back_populates="people")

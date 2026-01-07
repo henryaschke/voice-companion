@@ -35,12 +35,47 @@ async def get_db():
             await session.close()
 
 
+def _migrate_person_table_sync(conn):
+    """
+    MVP migration: Add new columns to Person table if they don't exist.
+    SQLite does not support IF NOT EXISTS for ALTER TABLE, so we check manually.
+    
+    NOTE: This is for MVP only. For production, use Alembic migrations.
+    """
+    from sqlalchemy import text, inspect
+    
+    # Get existing columns
+    inspector = inspect(conn)
+    existing_columns = {col['name'] for col in inspector.get_columns('people')}
+    
+    # Columns to add (name, type)
+    new_columns = [
+        ('age', 'INTEGER'),
+        ('personal_context_json', 'TEXT'),  # JSON stored as TEXT in SQLite
+        ('address_json', 'TEXT'),
+        ('updated_at', 'DATETIME'),
+    ]
+    
+    for col_name, col_type in new_columns:
+        if col_name not in existing_columns:
+            # SQLite ALTER TABLE ADD COLUMN
+            conn.execute(text(f'ALTER TABLE people ADD COLUMN {col_name} {col_type}'))
+            print(f"[Migration] Added column 'people.{col_name}'")
+
+
 async def init_db():
-    """Initialize database tables."""
+    """Initialize database tables and run migrations."""
     from app.models import Account, Person, TwilioNumber, Call, Transcript, CallAnalysis, MemoryState
     
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Run MVP migrations for existing tables
+    async with engine.begin() as conn:
+        try:
+            await conn.run_sync(_migrate_person_table_sync)
+        except Exception as e:
+            print(f"[Migration] Warning: {e}")
     
     # Create default accounts if they don't exist
     async with async_session_maker() as session:

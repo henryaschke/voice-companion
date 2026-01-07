@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import Account, Person, Call, Transcript, CallAnalysis, MemoryState, TwilioNumber
-from app.schemas import PersonCreate, PersonUpdate, CallCreate, CallUpdate, TranscriptCreate, CallAnalysisCreate
+from app.schemas import PersonCreate, PersonUpdate, CallCreate, CallUpdate, CallAnalysisCreate
 from app.config import encrypt_text, decrypt_text, settings
 
 
@@ -57,11 +57,21 @@ async def get_people(
 
 
 async def create_person(db: AsyncSession, person: PersonCreate) -> Person:
-    """Create a new person."""
+    """Create a new person with extended profile data."""
     # Default account based on kind
     account_id = person.account_id
     if not account_id:
         account_id = 2 if person.kind == "patient" else 1
+    
+    # Build personal_context_json from nested object
+    personal_context_json = None
+    if person.personal_context:
+        personal_context_json = person.personal_context.model_dump(exclude_unset=True)
+    
+    # Build address_json from nested object
+    address_json = None
+    if person.address:
+        address_json = person.address.model_dump(exclude_unset=True)
     
     db_person = Person(
         account_id=account_id,
@@ -70,7 +80,10 @@ async def create_person(db: AsyncSession, person: PersonCreate) -> Person:
         phone_e164=person.phone_e164,
         language=person.language,
         consent_recording=person.consent_recording,
-        retention_days=person.retention_days
+        retention_days=person.retention_days,
+        age=person.age,
+        personal_context_json=personal_context_json,
+        address_json=address_json
     )
     db.add(db_person)
     await db.commit()
@@ -85,18 +98,41 @@ async def create_person(db: AsyncSession, person: PersonCreate) -> Person:
 
 
 async def update_person(db: AsyncSession, person_id: int, updates: PersonUpdate, account_id: Optional[int] = None) -> Optional[Person]:
-    """Update a person's details."""
+    """Update a person's details with extended profile data."""
     person = await get_person(db, person_id, account_id)
     if not person:
         return None
     
     update_data = updates.model_dump(exclude_unset=True)
+    
+    # Handle nested personal_context
+    if "personal_context" in update_data and update_data["personal_context"]:
+        person.personal_context_json = update_data.pop("personal_context")
+    elif "personal_context" in update_data:
+        update_data.pop("personal_context")
+    
+    # Handle nested address
+    if "address" in update_data and update_data["address"]:
+        person.address_json = update_data.pop("address")
+    elif "address" in update_data:
+        update_data.pop("address")
+    
+    # Update remaining flat fields
     for field, value in update_data.items():
         setattr(person, field, value)
     
     await db.commit()
     await db.refresh(person)
     return person
+
+
+async def check_phone_exists(db: AsyncSession, phone_e164: str, exclude_person_id: Optional[int] = None) -> bool:
+    """Check if phone number already exists (for uniqueness validation)."""
+    query = select(Person).where(Person.phone_e164 == phone_e164)
+    if exclude_person_id:
+        query = query.where(Person.id != exclude_person_id)
+    result = await db.execute(query)
+    return result.scalar_one_or_none() is not None
 
 
 async def delete_person(db: AsyncSession, person_id: int, account_id: Optional[int] = None) -> bool:

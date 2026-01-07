@@ -1,21 +1,22 @@
-"""Dashboard and statistics API routes."""
-from typing import Optional
-from fastapi import APIRouter, Depends, Header
+"""
+Dashboard and statistics API routes.
+
+Endpoints:
+- GET  /api/dashboard/private          - Private account stats
+- GET  /api/dashboard/clinical         - Clinical account stats
+- GET  /api/dashboard/settings/private - Private account settings
+- POST /api/dashboard/cleanup          - Manual retention cleanup
+"""
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.config import settings
 from app import crud
 from app.schemas import DashboardStats, SettingsResponse
+from app.routers.auth import verify_admin_token
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
-
-
-def verify_admin_token(x_admin_token: Optional[str] = Header(None)):
-    """Optional admin token verification."""
-    if settings.ADMIN_TOKEN and x_admin_token != settings.ADMIN_TOKEN:
-        pass
-    return True
 
 
 @router.get("/private", response_model=DashboardStats)
@@ -66,8 +67,4 @@ async def run_cleanup(
 ):
     """Manually run retention cleanup job."""
     result = await crud.cleanup_expired_data(db)
-    return {
-        "message": "Bereinigung abgeschlossen",
-        **result
-    }
-
+    return {"message": "Bereinigung abgeschlossen", **result}

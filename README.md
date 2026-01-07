@@ -9,7 +9,7 @@ EU Voice Companion ermöglicht:
 - **Natürliche Konversation**: Streaming STT → LLM → Streaming TTS mit niedriger Latenz
 - **Cross-Call Memory**: Viola erinnert sich an frühere Gespräche (Fakten, Personen, Themen)
 - **Post-Call Analytics**: Sentiment-Analyse, Zusammenfassungen, Memory-Extraktion
-- **Zwei Portale**: Private (Senioren) und Klinisch (Patienten)
+- **Drei Portale**: Familie (Senioren), Pflegeeinrichtung (Bewohner), Arzt (Patienten)
 
 ---
 
@@ -42,7 +42,7 @@ EU Voice Companion ermöglicht:
 | **LLM** | OpenAI GPT-4o | Streaming Reasoning & Konversation |
 | **TTS** | ElevenLabs | Streaming Text-to-Speech (μ-law 8kHz) |
 | **Telefonie** | Twilio Media Streams | Bidirektionale WebSocket Audio |
-| **Frontend** | React + Vite + TypeScript + shadcn/ui + Tailwind | Dashboard & Management UI (Deutsch) |
+| **Frontend** | React + Vite + TypeScript + shadcn/ui + Tailwind | Dashboard & Management UI |
 | **Datenbank** | SQLite + SQLAlchemy | Async ORM mit GDPR-Features |
 
 ---
@@ -53,30 +53,33 @@ EU Voice Companion ermöglicht:
 voice-companion/
 ├── backend/
 │   ├── app/
-│   │   ├── __init__.py
 │   │   ├── main.py              # FastAPI App, Lifespan, CORS
 │   │   ├── config.py            # Pydantic Settings, Fernet Encryption
-│   │   ├── database.py          # SQLAlchemy Async Engine
+│   │   ├── database.py          # SQLAlchemy Async Engine + Migrations
 │   │   ├── models.py            # ORM Models (Account, Person, Call, etc.)
 │   │   ├── schemas.py           # Pydantic Request/Response Schemas
 │   │   ├── crud.py              # Database CRUD Operations
 │   │   ├── routers/
-│   │   │   ├── twilio_webhook.py   # Twilio Voice & Media Stream Handler
-│   │   │   ├── people.py           # Person Management API
-│   │   │   └── dashboard.py        # Dashboard Statistics API
+│   │   │   ├── auth.py            # Shared authentication utilities
+│   │   │   ├── twilio_webhook.py  # Twilio Voice & Media Stream Handler
+│   │   │   ├── people.py          # Person Management API
+│   │   │   └── dashboard.py       # Dashboard Statistics API
 │   │   └── services/
-│   │       ├── realtime_gateway.py # State Machine: LISTENING→THINKING→SPEAKING
-│   │       ├── deepgram_stt.py     # Streaming STT Client
-│   │       ├── openai_llm.py       # Streaming LLM with Memory Context
-│   │       ├── elevenlabs_tts.py   # Streaming TTS Client
-│   │       ├── audio_utils.py      # μ-law ↔ PCM Conversion
+│   │       ├── realtime_gateway.py    # State Machine: LISTENING→THINKING→SPEAKING
+│   │       ├── deepgram_stt.py        # Streaming STT Client
+│   │       ├── openai_llm.py          # Streaming LLM with Memory Context
+│   │       ├── elevenlabs_tts.py      # Streaming TTS Client (German pronunciation)
+│   │       ├── audio_utils.py         # μ-law ↔ PCM Conversion
 │   │       ├── post_call_processor.py # Sentiment, Summary, Memory Extraction
-│   │       └── metrics.py          # Latency Tracking (STT/LLM/TTS)
+│   │       └── metrics.py             # Latency Tracking (STT/LLM/TTS)
+│   ├── data/                    # SQLite database files
 │   ├── Dockerfile
 │   └── requirements.txt
-├── frontend/                    # Lovable-built TypeScript React App
+├── frontend/                    # React TypeScript App (Lovable-built)
 │   ├── src/
 │   │   ├── App.tsx              # React Router Setup
+│   │   ├── api/                 # API Client functions
+│   │   │   └── people.ts        # Create Senior/Patient API calls
 │   │   ├── components/
 │   │   │   ├── ui/              # shadcn/ui components
 │   │   │   ├── dashboard/       # Dashboard widgets
@@ -85,14 +88,14 @@ voice-companion/
 │   │   │   ├── doctor/          # Doctor portal components
 │   │   │   └── settings/        # Settings components
 │   │   ├── pages/
-│   │   │   ├── Dashboard.tsx
-│   │   │   ├── Settings.tsx
+│   │   │   ├── Dashboard.tsx    # Family portal dashboard
+│   │   │   ├── AddUser.tsx      # Multi-step user creation form
 │   │   │   ├── care/            # Care home portal pages
 │   │   │   └── doctor/          # Doctor portal pages
-│   │   ├── contexts/            # React context providers
+│   │   ├── contexts/            # React context providers (Portal switching)
 │   │   ├── hooks/               # Custom React hooks
 │   │   ├── types/               # TypeScript type definitions
-│   │   └── data/                # Mock data (for development)
+│   │   └── data/                # Mock data (for unintegrated features)
 │   ├── Dockerfile
 │   ├── tailwind.config.ts
 │   └── package.json
@@ -107,219 +110,93 @@ voice-companion/
 
 ## 🗄️ Datenbankschema
 
-### Entity-Relationship
+### Person Model (Erweitert)
 
-```
-┌──────────────┐       ┌──────────────┐       ┌──────────────┐
-│   accounts   │───┬──▶│    people    │──┬───▶│    calls     │
-├──────────────┤   │   ├──────────────┤  │    ├──────────────┤
-│ id           │   │   │ id           │  │    │ id           │
-│ type         │   │   │ account_id   │──┘    │ account_id   │
-│ name         │   │   │ kind         │       │ person_id    │
-│ created_at   │   │   │ display_name │       │ direction    │
-└──────────────┘   │   │ phone_e164   │       │ twilio_sid   │
-                   │   │ language     │       │ from_e164    │
-                   │   │ consent_rec. │       │ to_e164      │
-                   │   │ retention    │       │ status       │
-                   │   │ created_at   │       │ started_at   │
-                   │   └──────────────┘       │ ended_at     │
-                   │           │              │ duration_sec │
-                   │           ▼              │ created_at   │
-                   │   ┌──────────────┐       └──────────────┘
-                   │   │ memory_state │              │
-                   │   ├──────────────┤              │
-                   │   │ id           │              ├───────────────┐
-                   │   │ person_id    │              │               │
-                   │   │ memory_json  │              ▼               ▼
-                   │   │ updated_at   │       ┌──────────────┐ ┌──────────────┐
-                   │   └──────────────┘       │ transcripts  │ │call_analysis │
-                   │                          ├──────────────┤ ├──────────────┤
-                   └──▶┌──────────────┐       │ id           │ │ id           │
-                       │twilio_numbers│       │ call_id      │ │ call_id      │
-                       ├──────────────┤       │ text         │ │ sentiment_*  │
-                       │ id           │       │ is_encrypted │ │ summary_de   │
-                       │ account_id   │       │ created_at   │ │ memory_json  │
-                       │ phone_e164   │       └──────────────┘ │ created_at   │
-                       │ twilio_sid   │                        └──────────────┘
-                       └──────────────┘
+```python
+class Person:
+    id: int
+    account_id: int              # 1=Private, 2=Clinical
+    kind: str                    # "senior" | "patient"
+    display_name: str
+    phone_e164: str              # UNIQUE, E.164 format
+    language: str                # Default: "de"
+    age: int | None              # Optional age
+    personal_context_json: dict  # Interests, description, important people
+    address_json: dict           # Street, postal code, city
+    consent_recording: bool
+    retention_days: int
+    created_at: datetime
+    updated_at: datetime | None
 ```
 
-### Tabellen-Details
-
-| Tabelle | Beschreibung | GDPR-relevant |
-|---------|--------------|---------------|
-| `accounts` | Multi-Tenant Container (private/clinical) | Nein |
-| `people` | Registrierte Nutzer (Senioren/Patienten) | Ja - consent, retention |
-| `calls` | Anruf-Metadaten (SID, Zeiten, Status) | Ja - retention |
-| `transcripts` | Gesprächsprotokolle (optional verschlüsselt) | Ja - Fernet, retention |
-| `call_analysis` | LLM Sentiment & Zusammenfassung | Ja - retention |
-| `memory_state` | Langzeit-Kontext JSON pro Person | Ja - data minimization |
-| `twilio_numbers` | Zugewiesene Twilio Nummern | Nein |
-
-### Memory State JSON Schema
+### Personal Context JSON Schema
 
 ```json
 {
-  "facts": ["Wohnt in Schalksmühle", "Seit 30 Jahren dort"],
-  "preferences": ["Mag Spaziergänge", "Liest gerne Krimis"],
-  "important_people": ["Sohn: lebt im Ort", "Enkelin: Marie"],
-  "recent_topics": ["Fußball", "Einsamkeit", "Garten"],
-  "health_notes": ["Fühlt sich manchmal müde"],
-  "mood_indicator": "gut"
+  "short_description": "Liebevolle 78-jährige Oma",
+  "interests": "Stricken, Gartenarbeit, Kreuzworträtsel",
+  "important_people": "Thomas (Sohn), Anna (Enkelin)",
+  "preferred_topics": "Familie, Wetter, Nachrichten",
+  "daily_routines": "Morgens Kaffee, nachmittags Spaziergang",
+  "sensitivities": "Verstorbener Ehemann",
+  "diagnoses": "Bluthochdruck",
+  "medications": "Metoprolol 50mg",
+  "allergies": "Penicillin"
 }
 ```
 
----
+### Address JSON Schema
 
-## 🔄 Anruf-Flow
-
-### 1. Eingehender Anruf
-
-```
-Telefon → Twilio → POST /twilio/voice
-                         │
-                         ▼
-                  ┌─────────────────┐
-                  │ Nummer bekannt? │──No──▶ TwiML: "Nicht registriert" → Hangup
-                  └────────┬────────┘
-                          Yes
-                           │
-                           ▼
-                  ┌─────────────────┐
-                  │ Call in DB      │
-                  │ Person laden    │
-                  │ Memory laden    │
-                  └────────┬────────┘
-                           │
-                           ▼
-                  TwiML: <Connect><Stream url="wss://.../twilio/stream"/>
-```
-
-### 2. WebSocket Media Stream
-
-```
-Twilio "start" Event
-        │
-        ▼
-┌───────────────────────────────────────┐
-│         RealtimeGateway               │
-│                                       │
-│  State: IDLE → LISTENING              │
-│                                       │
-│  1. Deepgram STT verbinden            │
-│  2. OpenAI LLM initialisieren         │
-│  3. ElevenLabs TTS initialisieren     │
-│  4. Memory Context laden              │
-│  5. Begrüßung senden                  │
-└───────────────────────────────────────┘
-```
-
-### 3. Konversations-Schleife
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                                                                  │
-│  ┌─────────────┐      ┌─────────────┐      ┌─────────────┐      │
-│  │  LISTENING  │─────▶│  THINKING   │─────▶│  SPEAKING   │──┐   │
-│  │             │      │             │      │             │  │   │
-│  │ STT aktiv   │      │ LLM Stream  │      │ TTS Stream  │  │   │
-│  │ Partials    │      │ Sentence    │      │ μ-law Audio │  │   │
-│  │ Finals      │      │ Chunking    │      │ to Twilio   │  │   │
-│  └─────────────┘      └─────────────┘      └─────────────┘  │   │
-│         ▲                                                    │   │
-│         └────────────────────────────────────────────────────┘   │
-│                                                                  │
-│  Barge-In: Wenn User während SPEAKING spricht → Cancel → LISTEN │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-### 4. Turn-Taking Logik
-
-**Deepgram Events:**
-- `interim_results`: Partielle Transkripte (für Barge-In Erkennung)
-- `is_final`: Finale Transkripte mit Interpunktion
-- `speech_final`: Ende einer Sprecheinheit (400ms Stille)
-- `UtteranceEnd`: Zusätzlicher Timeout (1500ms nach letztem Wort)
-
-**Incomplete Utterance Detection:**
-```python
-# Wörter die auf unvollständige Sätze hindeuten
-INCOMPLETE_MARKERS_DE = {"aber", "und", "oder", "weil", "dass", "wenn", ...}
-
-# Wenn Satz mit diesen Wörtern endet → noch nicht verarbeiten
-if _looks_incomplete("Ja, wenn ich meine Familie sehe, aber"):
-    return  # Warte auf mehr
-```
-
-### 5. Post-Call Processing
-
-```
-Anruf beendet (Twilio "stop" Event)
-        │
-        ▼
-┌─────────────────────────────────────┐
-│  process_call_completion()          │
-│                                     │
-│  1. Transkript speichern (encrypt)  │
-│  2. GPT-4o-mini: Sentiment          │
-│     {"label": "positiv",            │
-│      "score": 0.7,                  │
-│      "reason_short_de": "..."}      │
-│  3. GPT-4o-mini: Zusammenfassung    │
-│     (max 8 Bullet Points)           │
-│  4. GPT-4o-mini: Memory Extraktion  │
-│     {"facts": [...],                │
-│      "important_people": [...]}     │
-│  5. Memory State mergen & speichern │
-└─────────────────────────────────────┘
-```
-
----
-
-## 🎙️ Viola - Die digitale Begleiterin
-
-### Persönlichkeit
-
-Viola ist eine deutschsprachige, digitale Begleiterin mit folgenden Eigenschaften:
-
-- **Ruhig & warm**: Klare, kurze Sätze
-- **Empathisch aber nicht übertrieben**: Emotionale Intensität niedriger als der Nutzer
-- **Kontext-bewusst**: Nutzt Langzeit-Memory und aktuelle Konversation
-- **Grenzen-bewusst**: Gibt keine medizinischen Ratschläge
-
-### Begrüßung
-
-Personalisiert bei bekanntem Namen:
-> "Hallo [Name]! Hier ist Viola, deine persönliche Begleiterin. Schön, dass du anrufst. Wie geht es dir heute?"
-
-Generisch:
-> "Hallo! Hier ist Viola, deine persönliche Begleiterin. Schön, dass du anrufst. Wie geht es dir heute?"
-
-### System Prompt (Auszug)
-
-```
-Du bist VIOLA, eine deutschsprachige, sprachbasierte digitale Begleiterin.
-
-KERNREGELN:
-1) REAGIERE auf das, was TATSÄCHLICH gesagt wurde
-2) SPIEGELE kurz (1 Satz), dann natürliche Fortsetzung
-3) Emotionale Intensität NIEDRIGER als der Nutzer
-4) BEHALTE DEN KONTEXT - wiederhole KEINE Fragen die bereits beantwortet wurden
-
-VERBOTEN:
-- "Danke, dass du das teilst"
-- "Wie geht es dir?" wiederholen
-- Therapie-Sprache
-
-Halte Antworten kurz (1-2 Sätze maximal).
+```json
+{
+  "street_house_number": "Musterstraße 12",
+  "postal_code": "12345",
+  "city": "Berlin"
+}
 ```
 
 ---
 
 ## 📊 API Endpoints
 
-### Twilio Webhooks
+### People API (✅ Frontend integriert)
+
+| Endpoint | Methode | Status | Beschreibung |
+|----------|---------|--------|--------------|
+| `/api/people/seniors` | GET | ✅ | Liste aller Senioren |
+| `/api/people/seniors` | POST | ✅ | Senior anlegen (mit Profil) |
+| `/api/people/patients` | GET | ✅ | Liste aller Patienten |
+| `/api/people/patients` | POST | ✅ | Patient anlegen (mit Profil) |
+| `/api/people/{id}` | GET | 🔜 | Person mit Stats |
+| `/api/people/{id}` | PUT | 🔜 | Person aktualisieren |
+| `/api/people/{id}` | DELETE | 🔜 | Person löschen |
+| `/api/people/{id}/analytics` | GET | 🔜 | Detaillierte Analytics |
+
+### Create Person Request Body
+
+```json
+{
+  "display_name": "Erika Mustermann",
+  "phone_e164": "0171 1234567",
+  "age": 78,
+  "language": "de",
+  "personal_context": {
+    "short_description": "Liebevolle Oma",
+    "interests": "Stricken, Gartenarbeit"
+  },
+  "address": {
+    "street_house_number": "Musterstraße 12",
+    "postal_code": "12345",
+    "city": "Berlin"
+  }
+}
+```
+
+**Phone Normalization:** German numbers (0171...) are automatically converted to E.164 (+49171...).
+
+**Duplicate Check:** Returns `409 Conflict` if phone number already exists.
+
+### Twilio Webhooks (Call Agent)
 
 | Endpoint | Methode | Beschreibung |
 |----------|---------|--------------|
@@ -337,33 +214,13 @@ Halte Antworten kurz (1-2 Sätze maximal).
 | `/api/dashboard/settings/private` | GET | Einstellungen abrufen |
 | `/api/dashboard/cleanup` | POST | Manueller Retention Cleanup |
 
-### People API
-
-| Endpoint | Methode | Beschreibung |
-|----------|---------|--------------|
-| `/api/people/seniors` | GET | Liste aller Senioren |
-| `/api/people/seniors` | POST | Senior anlegen |
-| `/api/people/patients` | GET | Liste aller Patienten |
-| `/api/people/patients` | POST | Patient anlegen |
-| `/api/people/{id}` | GET | Person mit Stats |
-| `/api/people/{id}` | PUT | Person aktualisieren |
-| `/api/people/{id}` | DELETE | Person löschen |
-| `/api/people/{id}/analytics` | GET | Detaillierte Analytics |
-
-### Health
-
-| Endpoint | Methode | Beschreibung |
-|----------|---------|--------------|
-| `/` | GET | Service Info |
-| `/health` | GET | Health Check |
-
 ---
 
 ## 🚀 Installation
 
 ### Voraussetzungen
 
-- Docker & Docker Compose
+- Docker & Docker Compose (oder Python 3.11+ und Node.js 20+)
 - Twilio Account mit Telefonnummer
 - OpenAI API Key
 - Deepgram API Key
@@ -405,11 +262,15 @@ TWILIO_NUMBER_E164=+1234567890
 BASE_URL=https://your-domain.com
 ```
 
-### 3. Docker Container starten
+### 3. Docker starten
 
 ```bash
 docker compose up -d --build
 ```
+
+**Services:**
+- Backend: http://localhost:8000
+- Frontend: http://localhost:3000
 
 ### 4. Twilio Webhook konfigurieren
 
@@ -420,15 +281,55 @@ In der Twilio Console:
    - **HTTP POST**
    - **Status Callback URL**: `https://your-domain.com/twilio/status`
 
-### 5. Erste Person anlegen
+---
 
-Öffne `https://your-domain.com/privat/personen` und lege eine Person mit der Telefonnummer an (E.164 Format: `+4915123456789`).
+## 🛠️ Lokale Entwicklung
+
+### Backend
+
+```bash
+cd backend
+python -m venv venv
+venv\Scripts\activate  # Windows
+# source venv/bin/activate  # Linux/Mac
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+# Läuft auf http://localhost:8080
+```
+
+**Frontend Environment:**
+```bash
+# frontend/.env
+VITE_API_BASE_URL=http://localhost:8000
+```
+
+---
+
+## 🎙️ Viola - Die digitale Begleiterin
+
+### Persönlichkeit
+
+- **Ruhig & warm**: Klare, kurze Sätze
+- **Empathisch**: Emotionale Intensität niedriger als der Nutzer
+- **Kontext-bewusst**: Nutzt Langzeit-Memory und aktuelle Konversation
+- **Grenzen-bewusst**: Gibt keine medizinischen Ratschläge
+- **Deutsche Aussprache**: Namen und Zahlen werden auf Deutsch ausgesprochen
+
+### Begrüßung
+
+> "Hallo [Name]! Hier ist Viola, deine persönliche Begleiterin. Schön, dass du anrufst. Wie geht es dir heute?"
 
 ---
 
 ## 🔒 GDPR / DSGVO Compliance
-
-### Implementierte Features
 
 | Feature | Implementierung |
 |---------|-----------------|
@@ -438,142 +339,31 @@ In der Twilio Console:
 | **Data Minimization** | Memory JSON limitiert (max 20 facts) |
 | **Access Control** | Nur registrierte Nummern können anrufen |
 | **EU Hosting** | Twilio Region IE1, Server in EU |
-| **No Training Use** | OpenAI API mit opt-out |
-
-### Fernet Key generieren
-
-```bash
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
-
-Ausgabe in `.env` als `FERNET_KEY` eintragen.
-
-### Retention Cleanup
-
-Läuft automatisch täglich. Manuell auslösen:
-
-```bash
-curl -X POST https://your-domain.com/api/dashboard/cleanup
-```
 
 ---
 
-## 📈 Metriken & Observability
+## 📈 Features Roadmap
 
-### Latenz-Metriken (pro Turn)
+### ✅ Phase 1 - Call Agent
+- Twilio Media Streams Integration
+- Deepgram STT (Deutsch)
+- OpenAI GPT-4o Streaming
+- ElevenLabs TTS (Deutsche Aussprache)
+- Barge-In Support
+- Post-Call Analysis (Sentiment, Summary, Memory)
 
-```json
-{
-  "turn_id": 5,
-  "stt_latency_ms": 0.0,
-  "llm_ttfb_ms": 486.2,
-  "llm_total_ms": 1237.8,
-  "tts_ttfb_ms": -16.7,
-  "total_turn_latency_ms": 882.9,
-  "call_sid": "CA123..."
-}
-```
+### ✅ Phase 2 - Create User
+- Multi-Step Formular (6 Schritte)
+- Personal Context speichern
+- Adresse speichern
+- Telefonnummer-Normalisierung
+- Duplikat-Prüfung
 
-### Call Summary
-
-```json
-{
-  "call_sid": "CA123...",
-  "duration_sec": 371.4,
-  "total_turns": 25,
-  "barge_in_count": 0,
-  "avg_turn_latency_ms": 965.9
-}
-```
-
-### Log-Format
-
-```
-[CA123...] Incoming call from +49151...
-[CA123...] Caller identified: Henry (ID: 1)
-[CA123...] Loaded memory for Henry: ['facts', 'important_people']
-[CA123...] Memory injected into LLM: [...]
-[CA123...] State: listening -> thinking
-[CA123...] LLM response: Das freut mich zu hören...
-[CA123...] METRIC: turn_complete {...}
-```
-
----
-
-## 🛠️ Entwicklung
-
-### Lokale Entwicklung (ohne Docker)
-
-**Backend:**
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-**Frontend:**
-```bash
-cd frontend
-npm install
-npm run dev
-# Runs on http://localhost:8080
-```
-
-The frontend is built with:
-- **Vite** - Fast build tool
-- **TypeScript** - Type safety
-- **React 18** - UI framework
-- **shadcn/ui** - Component library (Radix UI + Tailwind)
-- **Tailwind CSS** - Utility-first styling
-- **React Router** - Client-side routing
-- **TanStack Query** - Data fetching
-- **Recharts** - Charts & visualizations
-
-> **Note:** The frontend currently uses mock data. See `docs/frontend-endpoint-inventory.md` for the API endpoints that need to be wired up.
-
-### Logs anzeigen
-
-```bash
-docker compose logs -f backend
-docker compose logs -f frontend
-```
-
-### Container neu bauen
-
-```bash
-docker compose down
-docker compose up -d --build
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Anruf wird sofort beendet
-
-1. Twilio Webhook URL prüfen (HTTPS erforderlich)
-2. Backend Logs: `REJECTED: Unknown caller` → Nummer nicht registriert
-3. WebSocket 403: Caddy/Nginx muss WebSockets durchlassen
-
-### Keine Stimme hörbar
-
-1. ElevenLabs API Key prüfen
-2. Voice ID korrekt? (`yVKATr0ZJETwd3tQtpNG`)
-3. Logs: `TTS complete: X chars -> Y bytes`
-
-### STT funktioniert nicht
-
-1. Deepgram API Key prüfen
-2. Logs: `Connected to Deepgram STT`
-3. Audio-Format: Twilio sendet μ-law, wird zu PCM konvertiert
-
-### Memory wird nicht geladen
-
-1. Logs: `Loaded memory for [Name]: [...]`
-2. Nach Anruf prüfen: `Memory updated for person X`
-3. Post-Call Processing läuft async nach Anrufende
+### 🔜 Phase 3 - Full Integration
+- Dashboard mit echten Daten
+- Person Detail View
+- Call History
+- Analytics Dashboard
 
 ---
 

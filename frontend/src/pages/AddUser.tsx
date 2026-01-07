@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { usePortal } from "@/contexts/PortalContext";
+import { useToast } from "@/hooks/use-toast";
+import { createSenior, createPatient, CreatePersonPayload } from "@/api/people";
 import { 
   User, 
   Phone, 
@@ -23,7 +25,8 @@ import {
   Heart,
   Calendar,
   ClipboardList,
-  Home
+  Home,
+  Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -194,9 +197,86 @@ export default function AddUser() {
     }
   };
 
-  const handleSubmit = () => {
-    console.log("Submitting user data:", formData);
-    navigate(getBackPath());
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { toast } = useToast();
+
+  const handleSubmit = async () => {
+    // Validate required fields
+    if (!formData.vollstaendigerName.trim()) {
+      toast({
+        title: "Fehler",
+        description: "Bitte geben Sie einen Namen ein.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!formData.telefonnummer.trim()) {
+      toast({
+        title: "Fehler",
+        description: "Bitte geben Sie eine Telefonnummer ein.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Build the payload for the API
+      const payload: CreatePersonPayload = {
+        display_name: formData.vollstaendigerName.trim(),
+        phone_e164: formData.telefonnummer.trim(),
+        age: formData.alter ? parseInt(formData.alter, 10) : null,
+        language: formData.sprache || "de",
+        consent_recording: false,  // Default safe value
+        retention_days: 30,        // Default value
+        personal_context: {
+          short_description: formData.beschreibung || undefined,
+          interests: formData.interessen || undefined,
+          important_people: formData.wichtigePersonen || undefined,
+          preferred_topics: formData.gespraechsthemen || undefined,
+          daily_routines: formData.routinen || undefined,
+          sensitivities: formData.sensibilitaeten || undefined,
+          // Care home / clinical fields
+          diagnoses: formData.diagnosen || undefined,
+          medications: formData.medikamente || undefined,
+          allergies: formData.allergien || undefined,
+          mobility: formData.mobilitaet || undefined,
+          nutrition: formData.ernaehrung || undefined,
+        },
+        address: {
+          street_house_number: formData.strasse || undefined,
+          postal_code: formData.plz || undefined,
+          city: formData.stadt || undefined,
+        },
+      };
+
+      // Call the appropriate API based on portal
+      if (currentPortal === "familie") {
+        await createSenior(payload);
+      } else if (currentPortal === "pflegeeinrichtung" || currentPortal === "arzt") {
+        // For MVP: care home and doctor also use patients endpoint
+        await createPatient(payload);
+      } else {
+        await createSenior(payload);
+      }
+
+      toast({
+        title: "Erfolgreich gespeichert",
+        description: `${formData.vollstaendigerName} wurde erfolgreich angelegt.`,
+      });
+
+      navigate(getBackPath());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Ein unbekannter Fehler ist aufgetreten.";
+      toast({
+        title: "Fehler beim Speichern",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // =====================
@@ -1246,14 +1326,24 @@ export default function AddUser() {
           <Button
             variant="outline"
             onClick={prevStep}
-            disabled={isFirstStep}
+            disabled={isFirstStep || isSubmitting}
           >
             Zurück
           </Button>
           <Button
             onClick={isLastStep ? handleSubmit : nextStep}
+            disabled={isSubmitting}
           >
-            {isLastStep ? "Speichern" : "Weiter"}
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Speichern...
+              </>
+            ) : isLastStep ? (
+              "Speichern"
+            ) : (
+              "Weiter"
+            )}
           </Button>
         </div>
       </div>

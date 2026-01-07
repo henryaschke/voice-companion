@@ -42,7 +42,7 @@ EU Voice Companion ermöglicht:
 | **LLM** | OpenAI GPT-4o | Streaming Reasoning & Konversation |
 | **TTS** | ElevenLabs | Streaming Text-to-Speech (μ-law 8kHz) |
 | **Telefonie** | Twilio Media Streams | Bidirektionale WebSocket Audio |
-| **Frontend** | React + Vite | Dashboard & Management UI (Deutsch) |
+| **Frontend** | React + Vite + TypeScript + shadcn/ui + Tailwind | Dashboard & Management UI (Deutsch) |
 | **Datenbank** | SQLite + SQLAlchemy | Async ORM mit GDPR-Features |
 
 ---
@@ -74,24 +74,30 @@ voice-companion/
 │   │       └── metrics.py          # Latency Tracking (STT/LLM/TTS)
 │   ├── Dockerfile
 │   └── requirements.txt
-├── frontend/
+├── frontend/                    # Lovable-built TypeScript React App
 │   ├── src/
-│   │   ├── App.jsx              # React Router Setup
-│   │   ├── api.js               # Backend API Client
+│   │   ├── App.tsx              # React Router Setup
 │   │   ├── components/
-│   │   │   └── Layout.jsx       # Navigation & Portal Layout
-│   │   └── pages/
-│   │       ├── privat/          # Private Portal (Senioren)
-│   │       │   ├── Dashboard.jsx
-│   │       │   ├── Personen.jsx
-│   │       │   ├── PersonDetail.jsx
-│   │       │   └── Einstellungen.jsx
-│   │       └── klinik/          # Clinical Portal (Patienten)
-│   │           ├── Overview.jsx
-│   │           ├── Patienten.jsx
-│   │           └── PatientDetail.jsx
+│   │   │   ├── ui/              # shadcn/ui components
+│   │   │   ├── dashboard/       # Dashboard widgets
+│   │   │   ├── layout/          # App layout & sidebar
+│   │   │   ├── careHome/        # Care home portal components
+│   │   │   ├── doctor/          # Doctor portal components
+│   │   │   └── settings/        # Settings components
+│   │   ├── pages/
+│   │   │   ├── Dashboard.tsx
+│   │   │   ├── Settings.tsx
+│   │   │   ├── care/            # Care home portal pages
+│   │   │   └── doctor/          # Doctor portal pages
+│   │   ├── contexts/            # React context providers
+│   │   ├── hooks/               # Custom React hooks
+│   │   ├── types/               # TypeScript type definitions
+│   │   └── data/                # Mock data (for development)
 │   ├── Dockerfile
+│   ├── tailwind.config.ts
 │   └── package.json
+├── docs/
+│   └── frontend-endpoint-inventory.md  # API endpoint mapping
 ├── docker-compose.yml
 ├── env.example
 └── README.md
@@ -512,7 +518,20 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 cd frontend
 npm install
 npm run dev
+# Runs on http://localhost:8080
 ```
+
+The frontend is built with:
+- **Vite** - Fast build tool
+- **TypeScript** - Type safety
+- **React 18** - UI framework
+- **shadcn/ui** - Component library (Radix UI + Tailwind)
+- **Tailwind CSS** - Utility-first styling
+- **React Router** - Client-side routing
+- **TanStack Query** - Data fetching
+- **Recharts** - Charts & visualizations
+
+> **Note:** The frontend currently uses mock data. See `docs/frontend-endpoint-inventory.md` for the API endpoints that need to be wired up.
 
 ### Logs anzeigen
 

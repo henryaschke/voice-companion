@@ -26,7 +26,3 @@ python-dotenv==1.0.1
 httpx==0.26.0
 pydantic==2.6.1
 pydantic-settings==2.1.0
-
-# Audio processing
-audioop-lts==0.2.1
-

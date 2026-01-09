@@ -92,7 +92,7 @@ class RealtimeGateway:
         
         # Barge-in detection via local VAD (Voice Activity Detection)
         self._barge_in_text = ""  # Text captured during barge-in
-        self._vad_threshold = 500  # RMS energy threshold for speech detection
+        self._vad_threshold = 1200  # RMS energy threshold (increased from 500 to filter echo/noise at call start)
         self._consecutive_speech_frames = 0  # Require multiple frames to avoid false positives
         self._cancelled = False  # Flag for cancellation during tool calls
         
@@ -100,7 +100,7 @@ class RealtimeGateway:
         # Barge-in should only be allowed AFTER we've sent some audio
         # Otherwise user's own voice (echo/tail) triggers false positives
         self._audio_sent_count = 0  # Number of audio chunks sent in current turn
-        self._min_audio_before_bargein = 3  # Require at least 3 chunks (~300ms) before allowing barge-in
+        self._min_audio_before_bargein = 20  # Require at least 20 chunks (~400ms) - prevents false barge-in during greeting
         
         # CRITICAL: Turn ID for race condition prevention
         # Each turn gets a unique ID. Audio chunks are tagged with this ID.

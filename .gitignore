@@ -14,7 +14,7 @@ venv/
 
 # Database
 *.db
-data/
+backend/data/
 
 # Node
 node_modules/

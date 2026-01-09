@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Users, AlertCircle, Eye, Clock } from "lucide-react";
+import { Users, AlertCircle, Eye, Clock, RefreshCw } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { ResidentCard } from "@/components/careHome/ResidentCard";
-import { residents, aggregatedInsights } from "@/data/careHomeMockData";
+import { useCareHomeResidents } from "@/hooks/useCareHomeResidents";
 import { cn } from "@/lib/utils";
 import { AttentionStatus } from "@/types/careHome";
+import { Button } from "@/components/ui/button";
 
 type FilterType = "all" | AttentionStatus;
 
@@ -20,6 +21,9 @@ const filterConfig: { id: FilterType; label: string }[] = [
 export default function CareHomeResidents() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<FilterType>("all");
+  
+  // Fetch real data from backend
+  const { residents, aggregatedInsights, isLoading, error, refetch } = useCareHomeResidents();
 
   const filteredResidents =
     filter === "all"
@@ -64,14 +68,41 @@ export default function CareHomeResidents() {
     <DashboardLayout>
       <div className="w-full space-y-6">
         {/* Header */}
-        <div className="mb-2">
-          <h1 className="font-display text-2xl lg:text-3xl font-semibold text-foreground">
-            Bewohnerübersicht
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Aktualisiert für den aktuellen Dienst
-          </p>
+        <div className="mb-2 flex items-start justify-between">
+          <div>
+            <h1 className="font-display text-2xl lg:text-3xl font-semibold text-foreground">
+              Bewohnerübersicht
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              {isLoading ? "Lädt..." : "Aktualisiert für den aktuellen Dienst"}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+            disabled={isLoading}
+          >
+            <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
+            Aktualisieren
+          </Button>
         </div>
+
+        {/* Error State */}
+        {error && (
+          <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
+            <p className="text-destructive font-medium">Fehler beim Laden</p>
+            <p className="text-sm text-destructive/80 mt-1">{error}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              className="mt-3"
+            >
+              Erneut versuchen
+            </Button>
+          </div>
+        )}
 
         {/* Quick Stats */}
         <motion.div
@@ -136,31 +167,45 @@ export default function CareHomeResidents() {
         </div>
 
         {/* Resident List */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="grid gap-3"
-        >
-          {sortedResidents.map((resident, index) => (
-            <motion.div
-              key={resident.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.05 }}
-            >
-              <ResidentCard
-                resident={resident}
-                onClick={() => navigate(`/care/residents/${resident.id}`)}
+        {isLoading ? (
+          <div className="grid gap-3">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div
+                key={i}
+                className="h-32 bg-muted/50 rounded-xl animate-pulse"
               />
-            </motion.div>
-          ))}
+            ))}
+          </div>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="grid gap-3"
+          >
+            {sortedResidents.map((resident, index) => (
+              <motion.div
+                key={resident.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+              >
+                <ResidentCard
+                  resident={resident}
+                  onClick={() => navigate(`/care/residents/${resident.id}`)}
+                />
+              </motion.div>
+            ))}
 
-          {sortedResidents.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">
-              Keine Bewohner in dieser Kategorie.
-            </div>
-          )}
-        </motion.div>
+            {sortedResidents.length === 0 && !isLoading && (
+              <div className="text-center py-12 text-muted-foreground">
+                {residents.length === 0 
+                  ? "Noch keine Bewohner angelegt. Erstellen Sie einen neuen Bewohner über 'Bewohner hinzufügen'."
+                  : "Keine Bewohner in dieser Kategorie."
+                }
+              </div>
+            )}
+          </motion.div>
+        )}
       </div>
     </DashboardLayout>
   );

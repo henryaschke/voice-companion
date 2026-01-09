@@ -117,3 +117,53 @@ export async function createPatient(payload: CreatePersonPayload): Promise<Perso
   return response.json();
 }
 
+// === List/Read Functions ===
+
+export interface PersonWithStats extends PersonResponse {
+  total_calls: number;
+  calls_this_week: number;
+  avg_duration_sec?: number | null;
+  last_call_at?: string | null;
+  avg_sentiment_score?: number | null;
+}
+
+/**
+ * Fetch all seniors with call statistics.
+ * @throws Error with message if request fails
+ */
+export async function fetchSeniors(): Promise<PersonWithStats[]> {
+  const response = await fetch(`${API_BASE_URL}/api/people/seniors`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ApiError = await response.json().catch(() => ({ detail: 'Unbekannter Fehler' }));
+    throw new Error(errorData.detail || `Fehler beim Laden: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetch all patients with call statistics.
+ * @throws Error with message if request fails
+ */
+export async function fetchPatients(): Promise<PersonWithStats[]> {
+  const response = await fetch(`${API_BASE_URL}/api/people/patients`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ApiError = await response.json().catch(() => ({ detail: 'Unbekannter Fehler' }));
+    throw new Error(errorData.detail || `Fehler beim Laden: ${response.status}`);
+  }
+
+  return response.json();
+}
+

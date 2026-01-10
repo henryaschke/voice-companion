@@ -1,8 +1,8 @@
 """
-ElevenLabs Streaming TTS Client - Optimized for Voice "Lea"
+ElevenLabs Streaming TTS Client - Optimized for Voice "Theresa"
 
-Voice: Lea (pMrwpTuGOma7Nubxs5jo)
-- Native German female, neutral Hochdeutsch
+Voice: Theresa (v3V1d2rk6528UrLKRuy8)
+- German female voice
 - Calm, warm, clear, understated tone
 - Optimized for phone audio (8kHz) and elderly listeners
 
@@ -22,7 +22,7 @@ from app.config import settings
 
 class ElevenLabsTTS:
     """
-    Streaming TTS client using ElevenLabs, optimized for voice "Lea".
+    Streaming TTS client using ElevenLabs, optimized for voice "Theresa".
     
     Features:
     - Streaming audio generation with low latency
@@ -33,7 +33,7 @@ class ElevenLabsTTS:
     
     ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1"
     
-    # Lea-specific tuning: max words per sentence before considering a split
+    # Theresa-specific tuning: max words per sentence before considering a split
     MAX_WORDS_PER_CHUNK = 20
     
     def __init__(self, call_sid: str = "unknown"):
@@ -107,9 +107,9 @@ class ElevenLabsTTS:
     
     def _preprocess_text_for_lea(self, text: str) -> str:
         """
-        Preprocess text for natural German speech with voice Lea.
+        Preprocess text for natural German speech with voice Theresa.
         
-        Lea-specific optimizations:
+        Theresa-specific optimizations:
         - Convert numbers to German words (prevents English pronunciation)
         - Short sentences (max ~20 words) prevent melodic over-smoothing
         - Strategic comma placement for natural breathing pauses
@@ -120,7 +120,7 @@ class ElevenLabsTTS:
             text: Original text from LLM
             
         Returns:
-            Preprocessed text optimized for Lea's natural delivery
+            Preprocessed text optimized for Theresa's natural delivery
         """
         if not text:
             return ""
@@ -221,7 +221,7 @@ class ElevenLabsTTS:
         
         self._cancelled = False
         
-        # Preprocess text for Lea's optimal delivery
+        # Preprocess text for Theresa's optimal delivery
         processed_text = self._preprocess_text_for_lea(text)
         self.total_chars += len(processed_text)
         
@@ -238,7 +238,7 @@ class ElevenLabsTTS:
         # ═══════════════════════════════════════════════════════════════
         # LEA VOICE SETTINGS - Tuned for natural German phone conversation
         # ═══════════════════════════════════════════════════════════════
-        # Voice: Lea (pMrwpTuGOma7Nubxs5jo) - native German, Hochdeutsch
+        # Voice: Theresa (v3V1d2rk6528UrLKRuy8) - German female voice
         # Target: calm, warm, clear, natural - NOT theatrical or robotic
         #
         # stability: 0.40 (moderate - natural expression without instability)

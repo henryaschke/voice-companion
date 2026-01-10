@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     
     # ElevenLabs (Streaming TTS)
     ELEVENLABS_API_KEY: str = ""
-    ELEVENLABS_VOICE_ID: str = "pMrwpTuGOma7Nubxs5jo"  # Lea - native German female (Hochdeutsch)
+    ELEVENLABS_VOICE_ID: str = "v3V1d2rk6528UrLKRuy8"  # Theresa - German female voice
     # Model: eleven_multilingual_v2 recommended for Lea's best German prosody
     ELEVENLABS_MODEL: str = "eleven_multilingual_v2"
     

@@ -163,19 +163,19 @@ class RealtimeGateway:
         # Variable greetings - randomly selected for natural feel
         if first_name:
             greetings = [
-                f"Hallo {first_name}! Hier ist Viola. Schön, dass du anrufst. Wie geht's dir?",
-                f"Hey {first_name}! Viola hier. Na, wie läuft's bei dir?",
+                f"Hallo {first_name}! Hier ist Theresa. Schön, dass du anrufst. Wie geht's dir?",
+                f"Hey {first_name}! Theresa hier. Na, wie läuft's bei dir?",
                 f"Hallo {first_name}! Schön von dir zu hören. Was macht das Leben?",
-                f"Hi {first_name}! Hier ist Viola. Wie geht es dir heute?",
+                f"Hi {first_name}! Hier ist Theresa. Wie geht es dir heute?",
                 f"Hallo {first_name}! Freut mich, von dir zu hören. Alles gut bei dir?",
-                f"Na {first_name}! Viola am Apparat. Wie geht's, wie steht's?",
+                f"Na {first_name}! Theresa am Apparat. Wie geht's, wie steht's?",
             ]
         else:
             greetings = [
-                "Hallo! Hier ist Viola. Schön, dass du anrufst. Wie geht's dir?",
-                "Hey! Viola hier. Na, wie läuft's bei dir?",
+                "Hallo! Hier ist Theresa. Schön, dass du anrufst. Wie geht's dir?",
+                "Hey! Theresa hier. Na, wie läuft's bei dir?",
                 "Hallo! Schön von dir zu hören. Was macht das Leben?",
-                "Hi! Hier ist Viola. Wie geht es dir heute?",
+                "Hi! Hier ist Theresa. Wie geht es dir heute?",
             ]
         
         greeting = random.choice(greetings)

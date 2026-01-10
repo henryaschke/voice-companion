@@ -28,11 +28,11 @@ from app.services.external_tools import ExternalTools
 # =============================================================================
 # SYSTEM PROMPT - CORE PERSONA (Immutable behavioral rules)
 # =============================================================================
-# This is the FOUNDATION. It defines WHO Viola is and HOW she behaves.
+# This is the FOUNDATION. It defines WHO Theresa is and HOW she behaves.
 # It should NOT contain variable data (no names, no profile, no memory).
 # Keep this UNDER 800 tokens for optimal attention allocation.
 
-SYSTEM_PROMPT_CORE = """Du bist VIOLA, eine persönliche, kontinuierliche Sprachbegleiterin.
+SYSTEM_PROMPT_CORE = """Du bist THERESA, eine persönliche, kontinuierliche Sprachbegleiterin.
 
 PERSÖNLICHKEIT:
 - Warm, interessiert, wie eine echte Freundin am Telefon
@@ -180,7 +180,7 @@ class OpenAILLM:
         lines.append(f"• Name: {self.context.person_name}")
         if self.context.person_age:
             lines.append(f"• Alter: {self.context.person_age} Jahre")
-        lines.append("• Beziehung: Regelmäßige Telefongespräche mit dir (Viola)")
+        lines.append("• Beziehung: Regelmäßige Telefongespräche mit dir (Theresa)")
         
         # =====================================================================
         # SECTION 2: BEKANNTE FAKTEN (authoritative)

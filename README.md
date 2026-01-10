@@ -1,13 +1,13 @@
-# EU Voice Companion - Viola
+# EU Voice Companion - Theresa
 
-Eine DSGVO-konforme Sprachbegleiter-Plattform für die Altenpflege. **Viola** ist eine KI-gestützte digitale Begleiterin, die ältere Menschen durch natürliche Telefongespräche unterstützt.
+Eine DSGVO-konforme Sprachbegleiter-Plattform für die Altenpflege. **Theresa** ist eine KI-gestützte digitale Begleiterin, die ältere Menschen durch natürliche Telefongespräche unterstützt.
 
 ## 🎯 Überblick
 
 EU Voice Companion ermöglicht:
-- **Eingehende Anrufe**: Registrierte Nutzer rufen eine Twilio-Nummer an und sprechen mit Viola
+- **Eingehende Anrufe**: Registrierte Nutzer rufen eine Twilio-Nummer an und sprechen mit Theresa
 - **Natürliche Konversation**: Streaming STT → LLM → Streaming TTS mit niedriger Latenz
-- **Cross-Call Memory**: Viola erinnert sich an frühere Gespräche (Fakten, Personen, Themen)
+- **Cross-Call Memory**: Theresa erinnert sich an frühere Gespräche (Fakten, Personen, Themen)
 - **Post-Call Analytics**: Sentiment-Analyse, Zusammenfassungen, Memory-Extraktion
 - **Drei Portale**: Familie (Senioren), Pflegeeinrichtung (Bewohner), Arzt (Patienten)
 
@@ -313,7 +313,7 @@ VITE_API_BASE_URL=http://localhost:8000
 
 ---
 
-## 🎙️ Viola - Die digitale Begleiterin
+## 🎙️ Theresa - Die digitale Begleiterin
 
 ### Persönlichkeit
 
@@ -325,7 +325,7 @@ VITE_API_BASE_URL=http://localhost:8000
 
 ### Begrüßung
 
-> "Hallo [Name]! Hier ist Viola, deine persönliche Begleiterin. Schön, dass du anrufst. Wie geht es dir heute?"
+> "Hallo [Name]! Hier ist Theresa, deine persönliche Begleiterin. Schön, dass du anrufst. Wie geht es dir heute?"
 
 ---
 

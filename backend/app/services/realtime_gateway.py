@@ -52,6 +52,8 @@ class RealtimeGateway:
         self,
         call_sid: str,
         person_name: str = "Anrufer",
+        person_age: Optional[int] = None,
+        personal_context: Optional[dict] = None,
         memory_context: Optional[dict] = None,
         on_audio_out: Optional[Callable[[str, int], Awaitable[None]]] = None,  # (audio, turn_id)
         on_clear_audio: Optional[Callable[[], Awaitable[None]]] = None
@@ -62,12 +64,16 @@ class RealtimeGateway:
         Args:
             call_sid: Twilio call SID for logging
             person_name: Name of the person for personalization
-            memory_context: Long-term memory from database
+            person_age: Age of the person (for communication style)
+            personal_context: Static profile data (hobbies, sensitivities, important people)
+            memory_context: Dynamic long-term memory from conversations
             on_audio_out: Callback to send audio to Twilio (base64 μ-law)
             on_clear_audio: Callback to clear Twilio's audio buffer (for barge-in)
         """
         self.call_sid = call_sid
         self.person_name = person_name
+        self.person_age = person_age
+        self.personal_context = personal_context or {}
         self.memory_context = memory_context or {}
         self.on_audio_out = on_audio_out
         self.on_clear_audio = on_clear_audio  # Callback to clear Twilio's audio buffer
@@ -128,10 +134,12 @@ class RealtimeGateway:
         )
         await self.stt.connect()
         
-        # Initialize LLM
+        # Initialize LLM with full context
         self.llm = OpenAILLM(call_sid=self.call_sid)
         self.llm.set_context(
             person_name=self.person_name,
+            person_age=self.person_age,
+            personal_context=self.personal_context,
             memory_state=self.memory_context
         )
         

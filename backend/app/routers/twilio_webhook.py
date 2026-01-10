@@ -247,7 +247,9 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
                     
                     # NOW load call and person info with the correct call_sid
                     person_name = "Anrufer"
-                    memory_context = {}
+                    person_age = None
+                    personal_context = {}  # Static profile data (hobbies, sensitivities, etc.)
+                    memory_context = {}     # Dynamic memory from conversations
                     
                     async with async_session_maker() as db:
                         call = await crud.get_call_by_sid(db, actual_call_sid)
@@ -257,16 +259,25 @@ async def media_stream_handler(websocket: WebSocket, call_sid: str = "unknown"):
                             person = await crud.get_person(db, person_id)
                             if person:
                                 person_name = person.display_name
+                                person_age = person.age
+                                
+                                # CRITICAL: Load personal_context_json (hobbies, sensitivities, etc.)
+                                if person.personal_context_json:
+                                    personal_context = person.personal_context_json
+                                    print(f"[{actual_call_sid}] Loaded personal context for {person_name}: {list(personal_context.keys())}")
                             
+                            # Load dynamic memory from conversations
                             memory = await crud.get_memory_state(db, person_id)
                             if memory and memory.memory_json:
                                 memory_context = memory.memory_json
                                 print(f"[{actual_call_sid}] Loaded memory for {person_name}: {list(memory_context.keys())}")
                     
-                    # Initialize gateway with correct call_sid and memory
+                    # Initialize gateway with correct call_sid, profile, and memory
                     gateway = RealtimeGateway(
                         call_sid=actual_call_sid,
                         person_name=person_name,
+                        person_age=person_age,
+                        personal_context=personal_context,
                         memory_context=memory_context,
                         on_audio_out=send_audio_to_twilio,
                         on_clear_audio=clear_twilio_audio

@@ -26,14 +26,32 @@ class AccountResponse(AccountBase):
 
 # Nested schemas for structured JSON fields
 class PersonalContextInput(BaseModel):
-    """Personal context fields from frontend form."""
-    short_description: Optional[str] = None
-    interests: Optional[str] = None
-    important_people: Optional[str] = None
-    preferred_topics: Optional[str] = None
-    daily_routines: Optional[str] = None
-    sensitivities: Optional[str] = None
-    # Care home specific
+    """Personal context fields from frontend form.
+    
+    Context Hierarchy:
+    1. IDENTITY: short_description, communication_style
+    2. CONVERSATION STARTERS: interests, preferred_topics, life_highlights
+    3. SOCIAL CONTEXT: important_people, daily_routines
+    4. SENSITIVITIES: sensitivities (critical - avoid these topics!)
+    5. MEDICAL: diagnoses, medications, allergies, mobility, nutrition
+    """
+    # Identity & Personality
+    short_description: Optional[str] = None  # "Liebevolle 78-jährige Oma"
+    communication_style: Optional[str] = None  # "Spricht gerne ausführlich", "Mag direkten Humor"
+    
+    # Conversation Starters
+    interests: Optional[str] = None  # "Stricken, Gartenarbeit, Kreuzworträtsel"
+    preferred_topics: Optional[str] = None  # "Familie, Wetter, Nachrichten"
+    life_highlights: Optional[str] = None  # "War 40 Jahre Lehrerin, stolz auf 5 Enkel"
+    
+    # Social Context
+    important_people: Optional[str] = None  # "Thomas (Sohn), Anna (Enkelin)"
+    daily_routines: Optional[str] = None  # "Morgens Kaffee, nachmittags Spaziergang"
+    
+    # CRITICAL: Sensitivities (Agent must avoid or handle carefully!)
+    sensitivities: Optional[str] = None  # "Verstorbener Ehemann, Thema Pflegeheim"
+    
+    # Care home / clinical specific
     diagnoses: Optional[str] = None
     medications: Optional[str] = None
     allergies: Optional[str] = None
